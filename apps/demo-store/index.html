@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dynamic WebMCP Agent Network — Fetch-A-Thon 3.0</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Top Navigation -->
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="logo-badge">W-MCP</div>
+      <div>
+        <h1>Dynamic WebMCP Agent Network</h1>
+        <p class="tagline">Runtime Tool Discovery & Cross-Provider Multi-Agent Orchestration • Fetch-A-Thon 3.0</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="status-indicator">
+        <span class="pulse-dot"></span>
+        <span id="bridge-status">WebMCP Bridge: Active</span>
+      </div>
+      <button class="btn btn-secondary" id="btn-toggle-cart">
+        🛒 Cart (<span id="cart-count">0</span>)
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-layout">
+    <!-- Left Panel: Natural Language Agent Operator & Trace -->
+    <section class="agent-panel">
+      <div class="card agent-card">
+        <div class="card-header">
+          <h2>🤖 AI Agent Operator</h2>
+          <span class="badge badge-purple">ACP Connected</span>
+        </div>
+        <p class="helper-text">Enter your shopping goal in natural language. The system dynamically discovers website tools, normalizes schemas, routes across providers, and requests approval before mutating state.</p>
+        
+        <div class="prompt-box">
+          <textarea id="prompt-input" rows="4" placeholder="Enter your goal...">Find the best laptop under ₹70,000 for programming and college. Search multiple websites, compare at least three suitable options, explain the trade-offs, and add the best option to my cart. Do not check out.</textarea>
+          <div class="prompt-actions">
+            <button class="btn btn-primary" id="btn-run-agent">Execute Multi-Agent Workflow</button>
+            <button class="btn btn-outline" id="btn-sample-prompt">Reset Prompt</button>
+          </div>
+        </div>
+
+        <!-- Agent Execution Trace -->
+        <div class="trace-section">
+          <h3>Execution Trace & Explainability</h3>
+          <div class="trace-container" id="trace-container">
+            <div class="trace-step step-idle">
+              <span class="step-num">0</span>
+              <div class="step-content">
+                <strong>System Ready</strong>
+                <p>Awaiting user task. Click "Execute Multi-Agent Workflow" above.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Routing Explainability Summary -->
+        <div class="routing-explanation-card" id="routing-explanation" style="display: none;">
+          <h4>🎯 Routing Decision Rationale</h4>
+          <p id="routing-rationale-text"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Panel: Dual Provider Store & Live WebMCP Tool Inspector -->
+    <section class="content-panel">
+      <!-- Tabs -->
+      <div class="tabs-nav">
+        <button class="tab-btn active" data-tab="catalog">📦 Multi-Provider Catalog</button>
+        <button class="tab-btn" data-tab="webmcp">⚡ Live WebMCP Registry</button>
+        <button class="tab-btn" data-tab="comparison">⚖️ Product Comparison</button>
+      </div>
+
+      <!-- Tab 1: Catalog -->
+      <div class="tab-pane active" id="pane-catalog">
+        <div class="provider-banner">
+          <span class="provider-pill pill-alpha">Provider Alpha: TechMart Online (WebMCP)</span>
+          <span class="provider-pill pill-beta">Provider Beta: ElectroStore Pro (Remote MCP)</span>
+        </div>
+        <div class="products-grid" id="products-grid">
+          <!-- Dynamic Products injected here -->
+        </div>
+      </div>
+
+      <!-- Tab 2: WebMCP Tools Inspector -->
+      <div class="tab-pane" id="pane-webmcp">
+        <div class="card">
+          <div class="card-header">
+            <h3>Discovered Structured Website Tools</h3>
+            <span class="badge badge-green" id="tool-count-badge">4 Tools Discovered</span>
+          </div>
+          <p class="helper-text">Tools registered directly onto <code>window.modelContext</code> / <code>navigator.modelContext</code> by the page. The Dynamic Tool Router maps these into canonical capabilities.</p>
+          <div class="tools-table-container">
+            <table class="tools-table">
+              <thead>
+                <tr>
+                  <th>Provider</th>
+                  <th>Raw Tool Name</th>
+                  <th>Canonical Capability</th>
+                  <th>Classification</th>
+                  <th>Schema Properties</th>
+                </tr>
+              </thead>
+              <tbody id="tools-table-body">
+                <!-- Injected via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Comparison Matrix -->
+      <div class="tab-pane" id="pane-comparison">
+        <div class="card">
+          <div class="card-header">
+            <h3>Automated Candidate Comparison</h3>
+            <span class="badge badge-blue">Normalized Specs</span>
+          </div>
+          <div id="comparison-container">
+            <p class="empty-state">Run the agent workflow to generate a multi-provider comparison matrix.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Cart Drawer -->
+  <aside class="cart-drawer" id="cart-drawer">
+    <div class="drawer-header">
+      <h3>Shopping Cart (<span id="cart-provider-label">Cross-Provider</span>)</h3>
+      <button class="btn-close" id="btn-close-cart">&times;</button>
+    </div>
+    <div class="drawer-body" id="cart-items-container">
+      <p class="empty-cart-msg">Your shopping cart is currently empty.</p>
+    </div>
+    <div class="drawer-footer">
+      <div class="cart-total-row">
+        <span>Cart Total:</span>
+        <strong id="cart-total-amount">₹0.00</strong>
+      </div>
+      <div class="checkout-boundary-warning">
+        ⚠️ <strong>Checkout Boundary:</strong> The agent is strictly forbidden from initiating checkout or financial transactions without explicit confirmation.
+      </div>
+      <button class="btn btn-primary btn-block" id="btn-checkout" disabled>Proceed to Checkout (Protected)</button>
+    </div>
+  </aside>
+
+  <!-- Approval Gate Modal -->
+  <div class="modal-overlay" id="approval-modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>🛡️ Human Approval Gate</h3>
+        <span class="badge badge-amber">Action Authorization</span>
+      </div>
+      <div class="modal-body">
+        <p>The <strong>Policy Agent</strong> requires your explicit confirmation before executing this state-changing action:</p>
+        <div class="approval-details" id="approval-details-box">
+          <!-- Injected via JS -->
+        </div>
+        <div class="security-meta">
+          <small>🔐 Cryptographic Argument Hash: <code id="approval-hash">...</code></small><br>
+          <small>⏱️ Token Expiration: <span id="approval-timer">300s</span></small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-reject-approval">Reject Action</button>
+        <button class="btn btn-primary" id="btn-confirm-approval">Authorize & Execute Action</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/webmcpCompatibility.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

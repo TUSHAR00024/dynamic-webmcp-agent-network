@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dynamic-webmcp-agent-network"
+version = "1.0.0"
+description = "Autonomous Multi-Agent Web Operator using WebMCP + Fetch.ai + ACP + ASI:One"
+authors = [{ name = "Dynamic WebMCP Agent Network Contributors" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0"
+]
+
+[project.optional-dependencies]
+fetchai = [
+    "uagents>=0.17.0",
+    "uagents-core>=0.3.0"
+]
