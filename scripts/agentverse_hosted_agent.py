@@ -29,7 +29,7 @@ from uagents_core.contrib.protocols.chat import (
     chat_protocol_spec,
 )
 
-# Resilience patch: Make ChatAcknowledgement accept both legacy ('acknowledged') and modern ('acknowledged_msg_id') payloads
+# Multi-layer resilience patch: Support both legacy ('acknowledged') and modern ('acknowledged_msg_id') payloads
 def _safe_chat_ack_init(self, acknowledged_msg_id=None, metadata=None, timestamp=None, acknowledged=None, **kwargs):
     if acknowledged_msg_id is None:
         acknowledged_msg_id = kwargs.get("msg_id") or kwargs.get("id") or uuid4()
@@ -47,6 +47,57 @@ def _safe_chat_ack_init(self, acknowledged_msg_id=None, metadata=None, timestamp
     )
 
 ChatAcknowledgement.__init__ = _safe_chat_ack_init
+
+_orig_chat_ack_parse_raw = ChatAcknowledgement.parse_raw
+@classmethod
+def _safe_chat_ack_parse_raw(cls, b, *args, **kwargs):
+    try:
+        data = json.loads(b) if isinstance(b, (str, bytes)) else b
+        if isinstance(data, dict):
+            if "acknowledged_msg_id" not in data:
+                data["acknowledged_msg_id"] = str(data.get("msg_id") or data.get("id") or uuid4())
+            data.pop("acknowledged", None)
+            b = json.dumps(data)
+    except Exception:
+        pass
+    return _orig_chat_ack_parse_raw(b, *args, **kwargs)
+
+ChatAcknowledgement.parse_raw = _safe_chat_ack_parse_raw
+
+_orig_chat_ack_parse_obj = ChatAcknowledgement.parse_obj
+@classmethod
+def _safe_chat_ack_parse_obj(cls, obj, *args, **kwargs):
+    if isinstance(obj, dict):
+        if "acknowledged_msg_id" not in obj:
+            obj["acknowledged_msg_id"] = str(obj.get("msg_id") or obj.get("id") or uuid4())
+        obj.pop("acknowledged", None)
+    return _orig_chat_ack_parse_obj(obj, *args, **kwargs)
+
+ChatAcknowledgement.parse_obj = _safe_chat_ack_parse_obj
+
+# Intercept message queue processing to sanitize legacy acknowledgement payloads before Pydantic parsing
+_orig_agent_process_single_message = Agent._process_single_message
+async def _safe_agent_process_single_message(self, schema_digest: str, sender: str, message: Any, session: Any):
+    model_class = self._models.get(schema_digest)
+    if model_class and model_class.__name__ == "ChatAcknowledgement":
+        try:
+            data = json.loads(message) if isinstance(message, (str, bytes)) else message
+            if isinstance(data, dict):
+                if "acknowledged_msg_id" not in data:
+                    data["acknowledged_msg_id"] = str(data.get("msg_id") or data.get("id") or uuid4())
+                data.pop("acknowledged", None)
+                message = json.dumps(data)
+        except Exception:
+            pass
+    try:
+        return await _orig_agent_process_single_message(self, schema_digest, sender, message, session)
+    except TypeError as te:
+        if "ChatAcknowledgement" in str(te):
+            self._logger.info(f"Handled legacy ChatAcknowledgement envelope from {sender}")
+        else:
+            raise
+
+Agent._process_single_message = _safe_agent_process_single_message
 
 # Initialize Hosted Agent
 # On Agentverse cloud, Agent() automatically inherits managed endpoints, Almanac registration, and wallet

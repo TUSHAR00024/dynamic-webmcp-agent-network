@@ -52,6 +52,28 @@ class TestAgentOrchestration(unittest.TestCase):
         self.assertEqual(meta["version"], "0.3.0")
         self.assertIn("human_in_the_loop_approval", meta["capabilities"])
 
+    def test_chat_acknowledgement_resilience_to_legacy_payloads(self):
+        """Verify that ChatAcknowledgement deserializes both legacy {'acknowledged': true} and modern payloads."""
+        import json
+        from uuid import uuid4
+        from uagents_core.contrib.protocols.chat import ChatAcknowledgement
+
+        # 1. Payload with 'acknowledged': True and timestamp
+        legacy_payload = json.dumps({"timestamp": "2026-10-24T15:13:14Z", "acknowledged": True})
+        ack1 = ChatAcknowledgement.parse_raw(legacy_payload)
+        self.assertIsNotNone(ack1.acknowledged_msg_id)
+
+        # 2. Payload with only 'acknowledged': True
+        bare_payload = json.dumps({"acknowledged": True})
+        ack2 = ChatAcknowledgement.parse_raw(bare_payload)
+        self.assertIsNotNone(ack2.acknowledged_msg_id)
+
+        # 3. Modern payload with acknowledged_msg_id
+        test_uuid = str(uuid4())
+        modern_payload = json.dumps({"timestamp": "2026-10-24T15:13:14Z", "acknowledged_msg_id": test_uuid})
+        ack3 = ChatAcknowledgement.parse_raw(modern_payload)
+        self.assertEqual(str(ack3.acknowledged_msg_id), test_uuid)
+
 
 if __name__ == "__main__":
     unittest.main()
