@@ -153,3 +153,15 @@ def score_candidate(
     composite = (norm_rating * 0.35) + (provider_rel * provider_health * 0.25) + (norm_price * 0.25) + 0.15
     final_score = 50.0 + (composite * 48.0)
     return round(final_score, 1)
+
+
+def sanitize_user_query(raw_query: str) -> str:
+    """Strip platform tags, handles, and prefixes (e.g., @webmcp, webmcp:) from user query."""
+    cleaned = re.sub(r'@\w+\s*', '', raw_query).strip()
+    cleaned = re.sub(r'^webmcp[:\s]*', '', cleaned, flags=re.IGNORECASE).strip()
+    return cleaned if cleaned else "general products"
+
+
+
+calculate_candidate_score = score_candidate
+

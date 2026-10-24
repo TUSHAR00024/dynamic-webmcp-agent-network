@@ -152,3 +152,65 @@ def create_review_metadata(
     """Helper to generate ACP MetadataContent for review cards."""
     payload = build_approval_review_card(approval_req, top_recommendation)
     return create_card_metadata(payload, "review")
+
+
+def build_payment_review_card(order: Dict[str, Any]) -> Dict[str, Any]:
+    """Build an Agentverse review / approval card for Fetch.ai Ledger settlement."""
+    return {
+        "card_kind": "review",
+        "title": "💳 Authorize Fetch.ai Settlement",
+        "rows": [
+            {"label": "Order Reference", "value": order.get("order_id", "")},
+            {"label": "Product", "value": order.get("product_title", "Selected Item")},
+            {"label": "Total Amount (INR)", "value": f"₹{float(order.get('total_inr', 0)):,.2f}"},
+            {"label": "Settlement Amount (ASI)", "value": f"{float(order.get('total_asi', 0)):,.2f} ASI"},
+            {"label": "Recipient Wallet", "value": order.get("recipient_wallet", "")},
+            {"label": "Payment Protocol", "value": "Fetch.ai Agent Chat Protocol (ACP-Pay v1.0)"},
+            {"label": "Ledger Network", "value": "Fetch.ai Dorado Testnet"}
+        ],
+        "approve_cta": {
+            "label": "Authorize Payment (ASI Token)",
+            "primary": True,
+            "selection": {
+                "action": "confirm_payment",
+                "order_id": order.get("order_id", "")
+            }
+        },
+        "reject_cta": {
+            "label": "Cancel Payment",
+            "selection": {
+                "action": "cancel_payment",
+                "order_id": order.get("order_id", "")
+            }
+        }
+    }
+
+
+def create_payment_metadata(order: Dict[str, Any]) -> MetadataContent:
+    """Helper to generate ACP MetadataContent for payment authorization review cards."""
+    payload = build_payment_review_card(order)
+    return create_card_metadata(payload, "review")
+
+
+def build_settlement_detail_card(order: Dict[str, Any], tx_hash: str) -> Dict[str, Any]:
+    """Build settlement confirmation detail card."""
+    return {
+        "card_kind": "detail",
+        "title": "🎉 Payment Settled & Order Confirmed!",
+        "rows": [
+            {"label": "Order ID", "value": order.get("order_id", "")},
+            {"label": "Product", "value": order.get("product_title", "")},
+            {"label": "Amount Settled", "value": f"{float(order.get('total_asi', 0)):,.2f} ASI (₹{float(order.get('total_inr', 0)):,.2f})"},
+            {"label": "Transaction Hash", "value": f"{tx_hash[:18]}...{tx_hash[-10:]}" if len(tx_hash) > 28 else tx_hash},
+            {"label": "Settlement Ledger", "value": "Fetch.ai Dorado Testnet"},
+            {"label": "Merchant Wallet", "value": order.get("recipient_wallet", "")},
+            {"label": "Fulfillment Status", "value": "DISPATCH_AUTHORIZED"}
+        ]
+    }
+
+
+def create_settlement_metadata(order: Dict[str, Any], tx_hash: str) -> MetadataContent:
+    """Helper to generate ACP MetadataContent for settlement confirmation detail cards."""
+    payload = build_settlement_detail_card(order, tx_hash)
+    return create_card_metadata(payload, "detail")
+

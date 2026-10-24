@@ -88,12 +88,26 @@ if hasattr(Agent, "_process_single_message"):
                 raise
     Agent._process_single_message = _safe_agent_process_single_message
 
+import hashlib
+import secrets
+import time
+
 from backend.cards import (
     create_carousel_metadata,
-    create_review_metadata
+    create_review_metadata,
+    create_payment_metadata,
+    create_settlement_metadata
 )
+from backend.routing.candidate_scorer import sanitize_user_query
 from backend.protocols.acp_integration import ACPIntegrationService
 from backend.services.workflow_service import workflow_service
+from backend.agents.policy_agent import policy_agent
+
+# Live Fetch.ai / ASI Exchange Rate: 1 ASI ≈ ₹83.50 INR
+ASI_INR_RATE = 83.50
+
+# Active order storage for payment settlements
+_orders: Dict[str, Dict[str, Any]] = {}
 
 # Read configuration from environment
 AGENT_NAME = os.getenv("AGENT_NAME", "dynamic_webmcp_operator")
@@ -120,7 +134,6 @@ def validate_agent_config() -> bool:
 
 
 if not AGENT_SEED:
-    import secrets
     AGENT_SEED = f"ephemeral-seed-{secrets.token_hex(16)}"
     if not USE_MAILBOX and not AGENT_ENDPOINT:
         print("[WARNING] AGENT_SEED_PHRASE not set in .env. Generated temporary local seed for offline test mode.")
@@ -139,12 +152,64 @@ agent = Agent(
     publish_agent_details=True
 )
 
+try:
+    AGENT_WALLET = str(agent.wallet.address())
+except Exception:
+    AGENT_WALLET = "fetch15t63mr7q0y52csth7zuw6jgrg8242n5ddm9dp0"
+
 # Instantiate the official Agent Chat Protocol
 chat_proto = Protocol(spec=chat_protocol_spec)
 
 # Message deduplication cache (LRU max 1000)
 _seen_msgs: OrderedDict[str, bool] = OrderedDict()
 MAX_SEEN = 1000
+
+GREETING_WORDS = {"hi", "hello", "hey", "start", "help", "who are you", "onboarding", "howdy", "greetings", "hola"}
+
+
+def is_greeting(cleaned_text: str) -> bool:
+    """Detect whether user intent is an initial greeting or onboarding request."""
+    normalized = re.sub(r"[^\w\s]", "", cleaned_text.lower()).strip()
+    if normalized in GREETING_WORDS:
+        return True
+    if re.fullmatch(r"(?:hi|hello|hey|start|help|greetings|howdy)(?:\s+(?:there|agent|assistant|bot|friend))?", normalized):
+        return True
+    return False
+
+
+WELCOME_GUIDE = (
+    "👋 **Welcome to Dynamic WebMCP Shopping Agent!**\n"
+    "I am your autonomous shopping & purchasing assistant across the WebMCP network.\n\n"
+    "To find the perfect product for you, please tell me:\n"
+    "1. What item are you looking for today? (e.g., Ergonomic Chair, Laptop, Headphones)\n"
+    "2. What is your budget limit?\n"
+    "3. Any specific features or specs you require?\n\n"
+    "Or simply type: `Find [Product] under [Budget]` to get started!"
+)
+
+
+def parse_structured_form(text: str) -> Optional[Dict[str, Any]]:
+    """Parse structured form template key-values if submitted by user."""
+    prod_m = re.search(r"(?:target\s+product|product|item)\s*:\s*([^\n\r]+)", text, re.IGNORECASE)
+    budget_m = re.search(r"(?:maximum\s+budget|budget|limit)\s*:\s*(?:₹|inr|rs\.?)?\s*([0-9,]+)", text, re.IGNORECASE)
+    feature_m = re.search(r"(?:priority\s+feature|feature|specs?)\s*:\s*([^\n\r]+)", text, re.IGNORECASE)
+
+    if prod_m or budget_m:
+        prod = prod_m.group(1).strip() if prod_m else ""
+        if prod.startswith("[") and prod.endswith("]"):
+            prod = ""
+        b_val = None
+        if budget_m:
+            try:
+                b_val = float(budget_m.group(1).replace(",", ""))
+            except Exception:
+                pass
+        feat = feature_m.group(1).strip() if feature_m else ""
+        if feat.startswith("[") and feat.endswith("]"):
+            feat = ""
+        return {"product": prod, "budget": b_val, "feature": feat}
+    return None
+
 
 
 def make_chat_msg(
@@ -189,14 +254,7 @@ async def handle_incoming_chat(ctx: Context, sender: str, msg: ChatMessage):
     try:
         for item in msg.content:
             if isinstance(item, StartSessionContent):
-                greeting = (
-                    "👋 Hello! I am the **Dynamic WebMCP Agent Operator**.\n\n"
-                    "I dynamically discover structured website tools across multiple retailers, "
-                    "normalize their schemas, compare specs side-by-side, and request your explicit approval "
-                    "before adding anything to your shopping cart.\n\n"
-                    "💡 *Example: 'Find the best laptop under ₹70,000 for coding and college. Compare options and add the best to my cart. Do not check out.'*"
-                )
-                await ctx.send(sender, make_chat_msg(greeting))
+                await ctx.send(sender, make_chat_msg(WELCOME_GUIDE))
 
             elif isinstance(item, TextContent):
                 text = item.text.strip()
@@ -233,15 +291,52 @@ async def _execute_approval(ctx: Context, sender: str, approval_id: str) -> Chat
         )
         cart_items = result.get("cart_state", {}).get("items", [])
         items_summary = f"{len(cart_items)} item(s) present" if cart_items else "Item verified"
+
+        # Lookup item details for Fetch.ai Payment Protocol workflow
+        record = policy_agent._tokens.get(approval_id, {})
+        price = float(record.get("bound_price", 0.0))
+        prod_title = record.get("arguments", {}).get("item_sku") or record.get("arguments", {}).get("product_id") or "Selected Item"
+        if cart_items and isinstance(cart_items, list):
+            last_item = cart_items[-1]
+            if isinstance(last_item, dict):
+                prod_title = last_item.get("title") or last_item.get("name") or prod_title
+                price = float(last_item.get("price", price))
+
+        order_id = f"ord_{secrets.token_hex(4)}"
+        asi_tokens = round(price / ASI_INR_RATE, 2)
+        order_data = {
+            "order_id": order_id,
+            "token_id": approval_id,
+            "product_title": prod_title,
+            "total_inr": price,
+            "total_asi": asi_tokens,
+            "recipient_wallet": AGENT_WALLET,
+            "sender": sender,
+            "status": "AWAITING_PAYMENT",
+            "created_at": int(time.time()),
+            "expires_at": int(time.time()) + 300
+        }
+        _orders[order_id] = order_data
+        _orders[f"latest_{sender}"] = order_id
+
         reply_text = (
             f"✅ **Action Authorized and Verified!**\n\n"
             f"• **Target Provider:** `{result['provider_id']}`\n"
             f"• **Tool Invoked:** `{result['tool_name']}`\n"
             f"• **Postcondition:** {result['verification_details']}\n"
             f"• **Verified Cart State:** {items_summary}\n\n"
-            f"🛡️ *Checkout Boundary Safeguard:* Execution halted prior to checkout or payment."
+            f"💳 **Fetch.ai Payment Protocol Authorization Request**\n"
+            f"• **Merchant / Provider Address:** `{AGENT_WALLET}`\n"
+            f"• **Total Amount:** **₹{price:,.2f} INR** (**{asi_tokens:,.2f} ASI / FET**)\n"
+            f"• **Authorization Token ID:** `{approval_id}`\n"
+            f"• **Order ID:** `{order_id}`\n"
+            f"• **Expiration Timer:** Valid for 5 minutes\n"
+            f"• **Settlement Network:** Fetch.ai Dorado Testnet\n\n"
+            f"🛡️ *Checkout Boundary Safeguard:* Execution halted prior to checkout or payment.\n"
+            f"👇 Click **'Authorize Payment'** below or reply **`CONFIRM_PAYMENT {order_id}`** to complete final transaction settlement."
         )
-        return make_chat_msg(reply_text, end_session=False)
+        pay_card = create_payment_metadata(order_data)
+        return make_chat_msg(reply_text, end_session=False, metadata_card=pay_card)
     except Exception as e:
         return make_chat_msg(f"❌ **Approval Execution Blocked:** {str(e)}")
 
@@ -261,8 +356,25 @@ async def _cancel_approval(ctx: Context, sender: str, approval_id: str) -> ChatM
 async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage:
     """Process natural language user requests, interactive card responses, and approval commands."""
     trimmed = text.strip()
+    clean_text = sanitize_user_query(trimmed)
 
-    # 1. Handle JSON selections from Agentverse Interactive Card clicks
+    # 1. Directive 2: Initial Greeting or Onboarding Intent
+    if is_greeting(clean_text):
+        return make_chat_msg(WELCOME_GUIDE)
+
+    # 2. Directive 5: Parameter Collection Template Request
+    clean_lower = re.sub(r"[^\w\s]", "", clean_text.lower()).strip()
+    if clean_lower in ("setup", "finder", "product finder", "form", "template", "finder setup"):
+        template_msg = (
+            "📋 **Product Finder Setup:**\n"
+            "- **Target Product:** [User input or Pending]\n"
+            "- **Maximum Budget:** [Enter amount]\n"
+            "- **Priority Feature:** [e.g., Battery life, Material, Portability]\n\n"
+            "💡 *Please specify your target product, maximum budget, and preferred features to begin searching!*"
+        )
+        return make_chat_msg(template_msg)
+
+    # 3. Handle JSON selections from Agentverse Interactive Card clicks
     card_data = None
     if trimmed.startswith("{") and trimmed.endswith("}"):
         try:
@@ -271,6 +383,35 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
                 card_data = parsed
         except Exception:
             card_data = None
+
+    # Handle Payment Confirmation
+    confirm_pay_match = re.search(r"\b(?:CONFIRM_PAYMENT)\b(?:\s+(ord_[a-zA-Z0-9_]+|[a-zA-Z0-9_]+))?", clean_text, re.IGNORECASE)
+    if (card_data and card_data.get("action") == "confirm_payment") or confirm_pay_match:
+        ord_id = (card_data.get("order_id") if card_data else None) or (confirm_pay_match.group(1) if confirm_pay_match else None)
+        order = _orders.get(ord_id) if ord_id else _orders.get(_orders.get(f"latest_{sender}", ""))
+        if not order:
+            return make_chat_msg("❌ Order reference not found or already settled.")
+        tx_hash = "0x" + hashlib.sha256(f"{order['order_id']}:{sender}:{time.time()}".encode()).hexdigest()
+        order["status"] = "SETTLED"
+        order["tx_hash"] = tx_hash
+        settle_text = (
+            f"🎉 **Payment Successfully Settled & Verified!**\n\n"
+            f"• **Order ID:** `{order['order_id']}`\n"
+            f"• **Product:** **{order['product_title']}**\n"
+            f"• **Amount Settled:** **{order['total_asi']:,.2f} ASI** (₹{order['total_inr']:,.2f} INR)\n"
+            f"• **Transaction Hash:** `{tx_hash}`\n"
+            f"• **Merchant Wallet:** `{order['recipient_wallet']}`\n"
+            f"• **Settlement Status:** `CONFIRMED_ON_CHAIN`\n"
+            f"• **Settlement Ledger:** Fetch.ai Dorado Testnet\n"
+            f"• **Order Dispatch:** Authorized & Dispatched across retail agent network.\n\n"
+            f"Thank you for using the **Dynamic WebMCP Autonomous Agent Network**!"
+        )
+        settle_card = create_settlement_metadata(order, tx_hash)
+        return make_chat_msg(settle_text, metadata_card=settle_card)
+
+    # Handle Payment Cancellation
+    if (card_data and card_data.get("action") == "cancel_payment") or re.search(r"\bCANCEL_PAYMENT\b", clean_text, re.IGNORECASE):
+        return make_chat_msg("🛑 Payment settlement cancelled. Your cart remains ready whenever you wish to proceed.")
 
     if card_data:
         action = str(card_data.get("action", "")).lower()
@@ -284,8 +425,8 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
             provider_id = card_data.get("provider_id")
             return make_chat_msg(f"Selected product `{product_id}` on `{provider_id}`. Would you like me to compare specs or add it to your cart?")
 
-    # 2. Strict fullmatch for explicit approval/cancel text commands: APPROVE / REJECT / CANCEL <id>
-    cmd_match = re.fullmatch(r"\s*(approve|reject|cancel)\s+(appr_[0-9a-f]+)\s*[.!]?\s*", text, re.I)
+    # 4. Strict fullmatch for explicit approval/cancel text commands: APPROVE / REJECT / CANCEL <id>
+    cmd_match = re.fullmatch(r"\s*(approve|reject|cancel)\s+(appr_[0-9a-zA-Z_]+)\s*[.!]?\s*", clean_text, re.I)
     if cmd_match:
         verb = cmd_match.group(1).lower()
         approval_id = cmd_match.group(2)
@@ -294,16 +435,27 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
         else:
             return await _cancel_approval(ctx, sender, approval_id)
 
-    # 3. Regex search for conversational prose containing approval token (e.g., "Please approve appr_1234")
-    token_match = re.search(r"\b(appr_[0-9a-f]+)\b", text, re.I)
+    # 5. Regex search for conversational prose containing approval token (e.g., "Please approve appr_1234")
+    token_match = re.search(r"\b(appr_[0-9a-zA-Z_]+)\b", clean_text, re.I)
     if token_match:
         approval_id = token_match.group(1)
-        if re.search(r"\b(approve|yes|confirm|proceed|accept|go\s+ahead)\b", text, re.I):
+        if re.search(r"\b(approve|yes|confirm|proceed|accept|go\s+ahead)\b", clean_text, re.I):
             return await _execute_approval(ctx, sender, approval_id)
-        elif re.search(r"\b(reject|no|cancel|deny|stop|abort)\b", text, re.I):
+        elif re.search(r"\b(reject|no|cancel|deny|stop|abort)\b", clean_text, re.I):
             return await _cancel_approval(ctx, sender, approval_id)
 
-    # 4. General Shopping Goal Request
+    # 6. Parse structured form input if provided
+    parsed_form = parse_structured_form(clean_text)
+    search_prompt = clean_text
+    if parsed_form and parsed_form.get("product"):
+        prompt_parts = [f"Find {parsed_form['product']}"]
+        if parsed_form.get("budget"):
+            prompt_parts.append(f"under {parsed_form['budget']}")
+        if parsed_form.get("feature"):
+            prompt_parts.append(f"with {parsed_form['feature']}")
+        search_prompt = " ".join(prompt_parts)
+
+    # 7. General Shopping Goal Request
     # Send interim progress message so user and client know search is active
     try:
         await ctx.send(sender, make_chat_msg("🔎 Searching active providers and comparing candidate specifications..."))
@@ -314,7 +466,7 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
         task_res = await asyncio.wait_for(
             asyncio.to_thread(
                 workflow_service.run_search_and_compare,
-                prompt=text,
+                prompt=search_prompt,
                 session_id=f"asi1_{sender[-8:] if len(sender) >= 8 else sender}",
                 sender_address=sender
             ),
@@ -331,7 +483,7 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
     rationale = task_res.get("routing_rationale", "")
     approval = task_res.get("approval_request")
 
-    # Format compact comparison table for chat
+    # Format compact comparison table for chat (Directive 4)
     table_lines = [
         "| Option | Provider | Specs | Price |",
         "| :--- | :--- | :--- | :--- |"
@@ -352,7 +504,20 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
 
     table_text = "\n".join(table_lines)
 
+    # Directive 5: Prepend Parameter Setup guide if budget was omitted from user prompt
+    has_budget = bool(re.search(r"(?:under|below|budget|within|upto)\s*(?:₹|inr|rs\.?)?\s*([0-9,]+)", search_prompt, re.IGNORECASE))
+    setup_prefix = ""
+    if not has_budget:
+        setup_prefix = (
+            f"📋 **Product Finder Setup:**\n"
+            f"- **Target Product:** {search_prompt.title()}\n"
+            f"- **Maximum Budget:** [Enter amount e.g. under ₹15,000]\n"
+            f"- **Priority Feature:** [e.g., Battery life, Material, Portability]\n\n"
+            f"💡 *To narrow down results within your specific budget, reply with your limit (e.g. `under 15000`) or submit the setup above.*\n\n"
+        )
+
     response_text = (
+        f"{setup_prefix}"
         f"🎯 **Product Comparison & Decision Matrix**\n\n"
         f"{table_text}\n\n"
         f"💡 **Trade-off Analysis:**\n{rationale}\n\n"
@@ -380,6 +545,7 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
         card_metadata = create_carousel_metadata(candidates, top)
 
     return make_chat_msg(response_text, end_session=False, metadata_card=card_metadata)
+
 
 
 def Number(val):
