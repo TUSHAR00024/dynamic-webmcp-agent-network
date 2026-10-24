@@ -240,7 +240,13 @@ def make_chat_msg(text: str, end_session: bool = False, metadata_card: Optional[
 @chat_proto.on_message(ChatMessage)
 async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
     # Acknowledge receipt
-    await ctx.send(sender, ChatAcknowledgement(timestamp=datetime.now(timezone.utc), acknowledged=msg.msg_id))
+    await ctx.send(
+        sender,
+        ChatAcknowledgement(
+            timestamp=datetime.now(timezone.utc),
+            acknowledged_msg_id=msg.msg_id
+        )
+    )
 
     # Deduplicate
     msg_key = str(msg.msg_id)
