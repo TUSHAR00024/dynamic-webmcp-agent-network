@@ -31,12 +31,12 @@ Traditional web AI agents rely on computer-use approaches: capturing screenshots
 | Attribute | Specification |
 | :--- | :--- |
 | **Agent Name** | `dynamic_webmcp_operator` |
-| **Protocol** | Agent Chat Protocol (ACP) v0.3.0 (`uagents_core.contrib.protocols.chat`) |
+| **Protocol** | Agent Chat Protocol (ACP) v0.3.0 (`uagents_core.contrib.protocols.chat`; digest `proto:30a8...`) |
 | **Framework** | Fetch.ai `uagents` SDK (v0.26.1) |
 | **Agentverse Discovery** | Managed Mailbox (`USE_AGENTVERSE=true`) |
-| **ASI:One UI** | Predefined Interactive Cards (`review_card`, `carousel_card`) + Text Markdown |
+| **ASI:One UI** | Predefined Interactive Cards (`review_card`, `carousel_card`; validated per Agentverse spec) + Text Markdown |
 | **Default Model Engine** | ASI1 LLM (`api.asi1.ai`) with robust deterministic fallback |
-| **Test Coverage** | 25 Unit Tests (100% pass) + 4-turn E2E Chat Simulation |
+| **Test Coverage** | 48 Unit & Regression Tests (100% pass) + 4-turn E2E Chat Simulation |
 
 ---
 
@@ -101,21 +101,22 @@ flowchart TD
 
 ## 4. Multi-Agent Specialist Roles
 
-The architecture organizes operational responsibilities across discrete specialist agents:
+**Architecture:** Discrete specialized agents (planner, discovery, router, comparison, policy, cart, postcondition verifier, audit).  
+**Implementation:** Multi-agent Bureau demonstrated in `backend/bureau_network.py` (`python scripts/test_bureau.py`); primary ASI:One mailbox agent (`backend/uagent_app.py`) delegates to the same modular agent core.
 
 | Agent | Responsibility | Implementation File |
 | :--- | :--- | :--- |
-| **`dispatcher_agent`** | Primary gateway handling ACP messages, session lifecycle, and acknowledgements. | [`backend/uagent_app.py`](file:///Users/tusharsingh/.gemini/antigravity/scratch/dynamic-webmcp-agent-network/backend/uagent_app.py) |
-| **`planner_agent`** | Deconstructs user queries into structured constraints (budget, category, priorities). | [`backend/llm/asi1_client.py`](file:///Users/tusharsingh/.gemini/antigravity/scratch/dynamic-webmcp-agent-network/backend/llm/asi1_client.py) |
-| **`discovery_agent`** | Discovers tools exposed dynamically on active browser tabs or MCP server handshakes. | [`backend/registry/tool_registry.py`](file:///Users/tusharsingh/.gemini/antigravity/scratch/dynamic-webmcp-agent-network/backend/registry/tool_registry.py) |
-| **`routing_agent`** | Evaluates provider fitness, computes ranking scores, and executes parallel queries. | [`backend/routing/tool_router.py`](file:///Users/tusharsingh/.gemini/antigravity/scratch/dynamic-webmcp-agent-network/backend/routing/tool_router.py) |
-| **`comparison_agent`** | Synthesizes candidate specs into multi-attribute decision matrices and trade-off rationales. | [`backend/services/workflow_service.py`](file:///Users/tusharsingh/.gemini/antigravity/scratch/dynamic-webmcp-agent-network/backend/services/workflow_service.py) |
-| **`policy_agent`** | Human-in-the-loop gate; binds approval tokens to target SKU, price, and requesting sender. | [`backend/agents/policy_agent.py`](file:///Users/tusharsingh/.gemini/antigravity/scratch/dynamic-webmcp-agent-network/backend/agents/policy_agent.py) |
-| **`cart_agent`** | Executes approved tool invocations through the provider adapter. | [`backend/agents/cart_agent.py`](file:///Users/tusharsingh/.gemini/antigravity/scratch/dynamic-webmcp-agent-network/backend/agents/cart_agent.py) |
-| **`postcondition_verifier`** | Queries `CART_READ` independently to confirm real database state change. | [`backend/agents/cart_agent.py`](file:///Users/tusharsingh/.gemini/antigravity/scratch/dynamic-webmcp-agent-network/backend/agents/cart_agent.py) |
-| **`audit_agent`** | Maintains structured immutable audit trails redacting credentials. | [`backend/agents/audit_agent.py`](file:///Users/tusharsingh/.gemini/antigravity/scratch/dynamic-webmcp-agent-network/backend/agents/audit_agent.py) |
+| **`dispatcher_agent`** | Primary gateway handling ACP messages, session lifecycle, and acknowledgements. | [`backend/uagent_app.py`](backend/uagent_app.py) |
+| **`planner_agent`** | Deconstructs user queries into structured constraints (budget, category, priorities). | [`backend/llm/asi1_client.py`](backend/llm/asi1_client.py) |
+| **`discovery_agent`** | Discovers tools exposed dynamically on active browser tabs or MCP server handshakes. | [`backend/registry/tool_registry.py`](backend/registry/tool_registry.py) |
+| **`routing_agent`** | Evaluates provider fitness, computes ranking scores, and executes parallel queries. | [`backend/routing/tool_router.py`](backend/routing/tool_router.py) |
+| **`comparison_agent`** | Synthesizes candidate specs into multi-attribute decision matrices and trade-off rationales. | [`backend/services/workflow_service.py`](backend/services/workflow_service.py) |
+| **`policy_agent`** | Human-in-the-loop gate; binds approval tokens to target SKU, price, and requesting sender. | [`backend/agents/policy_agent.py`](backend/agents/policy_agent.py) |
+| **`cart_agent`** | Executes approved tool invocations through the provider adapter. | [`backend/agents/cart_agent.py`](backend/agents/cart_agent.py) |
+| **`postcondition_verifier`** | Queries `CART_READ` independently to confirm real database state change. | [`backend/agents/cart_agent.py`](backend/agents/cart_agent.py) |
+| **`audit_agent`** | Maintains structured immutable audit trails redacting credentials. | [`backend/agents/audit_agent.py`](backend/agents/audit_agent.py) |
 
-> **Bonus Multi-Agent Bureau**: For native inter-agent message passing using `uagents.Bureau` and `uagents.Model`, see [`backend/bureau_network.py`](file:///Users/tusharsingh/.gemini/antigravity/scratch/dynamic-webmcp-agent-network/backend/bureau_network.py) (`python scripts/test_bureau.py`).
+> **Bonus Multi-Agent Bureau**: For native inter-agent message passing using `uagents.Bureau` and `uagents.Model`, see [`backend/bureau_network.py`](backend/bureau_network.py) (`python scripts/test_bureau.py`).
 
 ---
 
@@ -167,20 +168,25 @@ make verify
     • ElectroStore Pro (provider_beta) - Health: healthy - Quality: 0.92
     • FaultyStore Global (provider_gamma) - Health: degraded - Quality: 0.4
 [✓] Tools Discovered in Canonical Registry: 9
-[✓] Agent Chat Protocol (ACP): AgentChatProtocol v0.3.0
-[✓] Router Parallel Search Output: 8 products discovered across providers
+    • PRODUCT_SEARCH: available from provider_alpha, provider_beta, provider_gamma
+    • PRODUCT_DETAILS: available from provider_alpha, provider_beta
+    • CART_ADD: available from provider_alpha, provider_beta
+    • CART_READ: available from provider_alpha, provider_beta
+[✓] Core Capability Coverage: All 4 capabilities actively mapped
+[-] ASI1 Reasoning Engine: SKIPPED (No ASI1_API_KEY; deterministic regex fallback active)
+[✓] Router Parallel Search: 8 products discovered across providers
 =============================================================
    All components VERIFIED and operating normally!           
 =============================================================
 ```
 
-### 3. Run Automated Unit & Regression Tests (25 tests)
+### 3. Run Automated Unit & Regression Tests (48 tests)
 ```bash
 make test
 ```
 *Expected Output:*
 ```text
-Ran 25 tests in 0.013s. OK
+Ran 48 tests in 0.55s. OK
 ```
 
 ### 4. Run End-to-End ASI:One Chat Simulation
@@ -256,20 +262,26 @@ dynamic-webmcp-agent-network/
 │   │   ├── cart_agent.py           # Cart action execution & postcondition verification
 │   │   └── audit_agent.py          # Verifiable execution trace audit log
 │   └── tests/
-│       ├── run_tests.py            # Master test discoverer & runner (25 tests)
-│       └── test_workflow_and_regressions.py # Budget, origin, price drift, and replay tests
+│       ├── run_tests.py            # Master test discoverer & runner (48 tests)
+│       ├── test_workflow_and_regressions.py # Budget, origin, price drift, and replay tests
+│       ├── test_block_a_fixes.py   # Regression tests for Block A (cards, fail-closed, regex)
+│       ├── test_block_b_fixes.py   # Regression tests for Block B (HMAC, token ownership, retries)
+│       └── test_block_c_fixes.py   # Regression tests for Block C (async, priorities, rationales)
 ├── apps/
 │   └── demo-store/                 # Companion WebMCP storefront with window.modelContext polyfill
 ├── docs/
 │   ├── JUDGING_CRITERIA_CHECKLIST.md # Honest criteria audit (Done / Partial / Simulated)
+│   ├── CARD_PAYLOADS.md            # Agentverse card payloads validated in Card Playground
 │   ├── ACP_AGENTVERSE_SETUP.md     # Mailbox registration & ASI:One discovery guide
 │   ├── DEMO_SCRIPT.md              # 3-5 minute presentation script
 │   └── DEVPOST.md                  # Complete hackathon submission summary
 └── scripts/
     ├── gen_seed.py                 # Cryptographic 24-word seed phrase generator
     ├── e2e_chat_simulation.py      # 4-turn ASI:One conversation test suite
-    ├── verify_setup.py             # System verification script
-    └── test_bureau.py              # Bureau multi-agent network verification
+    ├── verify_setup.py             # System verification script with active assertions
+    ├── test_bureau.py              # Bureau multi-agent network verification
+    ├── live_check.py               # Live connectivity & deployment diagnostics
+    └── package.sh                  # Submission packaging script with SHA256 checksum
 ```
 
 ---

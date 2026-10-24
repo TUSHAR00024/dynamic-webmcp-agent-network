@@ -36,12 +36,12 @@ Key features:
 ---
 
 ## How We Built It
-- **Agent Architecture**: Built with the official Fetch.ai `uagents` SDK (v0.26.1) and `uagents_core.contrib.protocols.chat`.
+- **Agent Architecture**: Built with the official Fetch.ai `uagents` SDK (v0.26.1) and `uagents_core.contrib.protocols.chat`. Architecture: discrete specialized agents (planner, discovery, router, comparison, policy, cart, postcondition verifier, audit). Implementation: multi-agent Bureau demonstrated in `backend/bureau_network.py` (`python scripts/test_bureau.py`); primary ASI:One mailbox agent (`backend/uagent_app.py`) delegates to the same modular agent core.
 - **Reasoning Engine**: Powered by **ASI1 LLM** (`api.asi1.ai`) with a robust deterministic fallback for intent extraction and trade-off rationalization.
-- **Protocol Standards**: Implements ACP v0.3.0 (`ChatMessage`, `StartSessionContent`, `TextContent`, `MetadataContent`) with Agentverse-compliant interactive cards (`card_kind: "review"`, `"carousel"`).
-- **Multi-Agent Bureau**: Configured a native `uagents.Bureau` coordinating 5 discrete specialist agents (Research, Comparison, Policy, Cart, Supervisor) exchanging typed Pydantic `Model` messages across cryptographic Bech32 addresses (`agent1q...`).
+- **Protocol Standards**: Implements Agent Chat Protocol (ACP v0.3.0, `chat_protocol_spec.digest`) with official Agentverse-compliant interactive cards (`card_protocol_version: "1"`, `requires_card_interaction: "true"`, `card_kind: "review"`, `"carousel"`). Interactive cards are implemented per official Agentverse specification and validated against the Card Playground (`docs/CARD_PAYLOADS.md`), with conversational markdown fallback.
+- **Payment Protocol**: Simulated payment integration (contract structure defined, mock settlement rail) for autonomous agent actions.
 - **WebMCP Integration**: Implements the W3C Web Machine Learning Community Group `window.modelContext` standard on the frontend with a secure tunneling browser bridge.
-- **Security Engineering**: Developed exact hostname allowlists preventing DNS rebinding, prompt-injection sanitizers, cryptographic sender binding, and idempotency guards against replay attacks.
+- **Security Engineering**: Developed exact hostname allowlists preventing DNS rebinding, prompt-injection sanitizers, cryptographic sender binding, HMAC-SHA256 authorization, and idempotency guards against replay attacks.
 
 ---
 
@@ -53,10 +53,10 @@ Key features:
 ---
 
 ## Accomplishments That We're Proud Of
-- **Zero Fluff, 100% Verified**: 25 automated unit and regression tests pass in under 0.02 seconds (`make test`).
+- **Zero Fluff, 100% Verified**: 48 automated unit and regression tests pass in under 0.55 seconds (`make test`).
 - **Complete ASI:One Chat Flow**: Full 4-turn E2E conversational simulation (`make e2e`) verifying start session, multi-provider search, human approval, and replay interception.
-- **Native Fetch.ai Technology**: Genuine `uagents.Agent` with Mailbox integration and official Agent Chat Protocol v0.3.0.
-- **Interactive UI Cards**: Rich Agentverse review and carousel cards rendered directly in chat sessions.
+- **Native Fetch.ai Technology**: Genuine `uagents.Agent` with Mailbox integration and official Agent Chat Protocol v0.3.0 (`chat_protocol_spec`).
+- **Interactive UI Cards**: Rich Agentverse review and carousel cards rendered directly in chat sessions, validated against Card Playground specs.
 
 ---
 
