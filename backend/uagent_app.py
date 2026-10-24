@@ -46,8 +46,6 @@ def _safe_chat_ack_init(self, acknowledged_msg_id=None, metadata=None, timestamp
         metadata=metadata
     )
 
-ChatAcknowledgement.__init__ = _safe_chat_ack_init
-
 _orig_chat_ack_parse_raw = ChatAcknowledgement.parse_raw
 @classmethod
 def _safe_chat_ack_parse_raw(cls, b, *args, **kwargs):
@@ -62,8 +60,6 @@ def _safe_chat_ack_parse_raw(cls, b, *args, **kwargs):
         pass
     return _orig_chat_ack_parse_raw(b, *args, **kwargs)
 
-ChatAcknowledgement.parse_raw = _safe_chat_ack_parse_raw
-
 _orig_chat_ack_parse_obj = ChatAcknowledgement.parse_obj
 @classmethod
 def _safe_chat_ack_parse_obj(cls, obj, *args, **kwargs):
@@ -73,31 +69,24 @@ def _safe_chat_ack_parse_obj(cls, obj, *args, **kwargs):
         obj.pop("acknowledged", None)
     return _orig_chat_ack_parse_obj(obj, *args, **kwargs)
 
-ChatAcknowledgement.parse_obj = _safe_chat_ack_parse_obj
+import uagents_core.contrib.protocols.chat as _chat_module
+for _cls in [ChatAcknowledgement, _chat_module.ChatAcknowledgement]:
+    _cls.__init__ = _safe_chat_ack_init
+    _cls.parse_raw = _safe_chat_ack_parse_raw
+    _cls.parse_obj = _safe_chat_ack_parse_obj
 
-# Intercept message queue processing to sanitize legacy acknowledgement payloads before Pydantic parsing
-_orig_agent_process_single_message = Agent._process_single_message
-async def _safe_agent_process_single_message(self, schema_digest: str, sender: str, message: Any, session: Any):
-    model_class = self._models.get(schema_digest)
-    if model_class and model_class.__name__ == "ChatAcknowledgement":
+# Safe message queue hook if running in an environment where Agent exposes _process_single_message
+if hasattr(Agent, "_process_single_message"):
+    _orig_agent_process_single_message = getattr(Agent, "_process_single_message")
+    async def _safe_agent_process_single_message(self, schema_digest: str, sender: str, message: Any, session: Any):
         try:
-            data = json.loads(message) if isinstance(message, (str, bytes)) else message
-            if isinstance(data, dict):
-                if "acknowledged_msg_id" not in data:
-                    data["acknowledged_msg_id"] = str(data.get("msg_id") or data.get("id") or uuid4())
-                data.pop("acknowledged", None)
-                message = json.dumps(data)
-        except Exception:
-            pass
-    try:
-        return await _orig_agent_process_single_message(self, schema_digest, sender, message, session)
-    except TypeError as te:
-        if "ChatAcknowledgement" in str(te):
-            self._logger.info(f"Handled legacy ChatAcknowledgement envelope from {sender}")
-        else:
-            raise
-
-Agent._process_single_message = _safe_agent_process_single_message
+            return await _orig_agent_process_single_message(self, schema_digest, sender, message, session)
+        except TypeError as te:
+            if "ChatAcknowledgement" in str(te):
+                self._logger.info(f"Handled legacy ChatAcknowledgement envelope from {sender}")
+            else:
+                raise
+    Agent._process_single_message = _safe_agent_process_single_message
 
 from backend.cards import (
     create_carousel_metadata,
