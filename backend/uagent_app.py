@@ -41,17 +41,18 @@ AGENT_NAME = os.getenv("AGENT_NAME", "dynamic_webmcp_operator")
 AGENT_PORT = int(os.getenv("AGENT_PORT", "8001"))
 AGENT_SEED = os.getenv("AGENT_SEED_PHRASE", "").strip()
 USE_MAILBOX = os.getenv("USE_AGENTVERSE", "false").lower() in ("true", "1", "yes")
+AGENT_ENDPOINT = os.getenv("AGENT_ENDPOINT", "").strip()
 
 
 def validate_agent_config() -> bool:
-    """Verify that agent has persistent seed when mailbox mode is enabled."""
+    """Verify that agent has persistent seed when mailbox or endpoint mode is enabled."""
     seed = os.getenv("AGENT_SEED_PHRASE", "").strip()
-    mailbox_enabled = os.getenv("USE_AGENTVERSE", "false").lower() in ("true", "1", "yes")
-    if mailbox_enabled and not seed:
+    remote_enabled = os.getenv("USE_AGENTVERSE", "false").lower() in ("true", "1", "yes") or bool(AGENT_ENDPOINT)
+    if remote_enabled and not seed:
         print("\n" + "=" * 70)
         print("❌ ERROR: AGENT_SEED_PHRASE is not set in your .env file!")
-        print("When USE_AGENTVERSE=true (mailbox mode), an ephemeral seed would regenerate")
-        print("a new agent address on every run, breaking your Agentverse Mailbox registration.")
+        print("When deploying for ASI:One, an ephemeral seed would regenerate")
+        print("a new agent address on every run, breaking your registration.")
         print("\n👉 Fix: Run `python scripts/gen_seed.py`, copy the 24 words, and set:")
         print('   AGENT_SEED_PHRASE="your 24 words here"')
         print("=" * 70 + "\n")
@@ -62,15 +63,20 @@ def validate_agent_config() -> bool:
 if not AGENT_SEED:
     import secrets
     AGENT_SEED = f"ephemeral-seed-{secrets.token_hex(16)}"
-    if not USE_MAILBOX:
+    if not USE_MAILBOX and not AGENT_ENDPOINT:
         print("[WARNING] AGENT_SEED_PHRASE not set in .env. Generated temporary local seed for offline test mode.")
+
+# Configure public endpoint (direct webhook) or mailbox
+endpoints = [AGENT_ENDPOINT] if AGENT_ENDPOINT else None
+use_mailbox = USE_MAILBOX if not endpoints else False
 
 # Initialize the official Fetch.ai uAgent
 agent = Agent(
     name=AGENT_NAME,
     seed=AGENT_SEED,
     port=AGENT_PORT,
-    mailbox=USE_MAILBOX,
+    endpoint=endpoints,
+    mailbox=use_mailbox,
     publish_agent_details=True
 )
 
