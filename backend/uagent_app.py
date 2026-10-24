@@ -324,8 +324,9 @@ def Number(val):
         return 0.0
 
 
-# Include chat protocol in agent definition (publish_manifest disabled by default in test/isolated runs to prevent unawaited background tasks)
-should_publish = os.getenv("PUBLISH_MANIFEST", "false").lower() == "true"
+# Include chat protocol in agent definition
+# Publish manifest when running as main agent process, but omit during test module imports to prevent unawaited coroutines
+should_publish = (os.getenv("PUBLISH_MANIFEST", "true").lower() in ("true", "1", "yes")) and (__name__ == "__main__")
 agent.include(chat_proto, publish_manifest=should_publish)
 
 if __name__ == "__main__":
