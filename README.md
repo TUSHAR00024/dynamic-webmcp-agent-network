@@ -14,6 +14,7 @@
 Traditional web AI agents rely on computer-use approaches: capturing screenshots, guessing CSS selectors, and clicking coordinates. When website layouts or DOM classes change, these agents instantly break.
 
 **Dynamic WebMCP Agent Network** pioneers a future-proof architecture for autonomous web operations:
+- **Open-Domain Dynamic Routing**: Intelligently handles diverse procurement queries across laptops, 4K/gaming computer monitors, ergonomic office furniture, enterprise cloud compute, and developer software subscriptions with domain-adaptive candidate scoring.
 - **Runtime Tool Discovery**: Discovers structured website tools through **WebMCP** (`window.modelContext` / `navigator.modelContext`) and **Remote MCP** servers on-the-fly without hardcoding.
 - **Canonical Capability Layer**: Dynamically maps heterogeneous tools into unified primitives (`PRODUCT_SEARCH`, `PRODUCT_DETAILS`, `CART_ADD`, `CART_READ`), seamlessly normalizing divergent schemas (e.g., TechMart's `search_products(query, max_price)` vs ElectroStore's `find_items(keywords, budget)`).
 - **Multi-Factor Provider Ranking**: Evaluates candidates across schema compatibility ($S_{\text{match}}$), data quality ($S_{\text{quality}}$), health reliability ($S_{\text{reliability}}$), spec freshness ($S_{\text{freshness}}$), and latency penalties ($P_{\text{latency}}$).
@@ -36,7 +37,7 @@ Traditional web AI agents rely on computer-use approaches: capturing screenshots
 | **Agentverse Discovery** | Managed Mailbox (`USE_AGENTVERSE=true`) |
 | **ASI:One UI** | Predefined Interactive Cards (`review_card`, `carousel_card`; validated per Agentverse spec) + Text Markdown |
 | **Default Model Engine** | ASI1 LLM (`api.asi1.ai`) with robust deterministic fallback |
-| **Test Coverage** | 48 Unit & Regression Tests (100% pass) + 4-turn E2E Chat Simulation |
+| **Test Coverage** | 56 Unit & Regression Tests (100% pass) + 4-turn E2E Chat Simulation |
 
 ---
 
@@ -180,13 +181,13 @@ make verify
 =============================================================
 ```
 
-### 3. Run Automated Unit & Regression Tests (48 tests)
+### 3. Run Automated Unit & Regression Tests (56 tests)
 ```bash
 make test
 ```
 *Expected Output:*
 ```text
-Ran 48 tests in 0.55s. OK
+Ran 56 tests in 0.67s. OK
 ```
 
 ### 4. Run End-to-End ASI:One Chat Simulation
@@ -262,13 +263,17 @@ dynamic-webmcp-agent-network/
 │   │   ├── cart_agent.py           # Cart action execution & postcondition verification
 │   │   └── audit_agent.py          # Verifiable execution trace audit log
 │   └── tests/
-│       ├── run_tests.py            # Master test discoverer & runner (48 tests)
+│       ├── run_tests.py            # Master test discoverer & runner (56 tests)
 │       ├── test_workflow_and_regressions.py # Budget, origin, price drift, and replay tests
 │       ├── test_block_a_fixes.py   # Regression tests for Block A (cards, fail-closed, regex)
 │       ├── test_block_b_fixes.py   # Regression tests for Block B (HMAC, token ownership, retries)
-│       └── test_block_c_fixes.py   # Regression tests for Block C (async, priorities, rationales)
+│       ├── test_block_c_fixes.py   # Regression tests for Block C (async, priorities, rationales)
+│       ├── test_block_d_fixes.py   # Regression tests for Block D (links, assertions, packaging)
+│       └── test_open_domain_and_cards.py # Open-domain routing, monitor/furniture scoring, HMAC cards
 ├── apps/
 │   └── demo-store/                 # Companion WebMCP storefront with window.modelContext polyfill
+├── approvals.py                    # Top-level convenience export for HMAC approval validation
+├── acp_integration.py              # Top-level convenience export for ACP chat protocol
 ├── docs/
 │   ├── JUDGING_CRITERIA_CHECKLIST.md # Honest criteria audit (Done / Partial / Simulated)
 │   ├── CARD_PAYLOADS.md            # Agentverse card payloads validated in Card Playground

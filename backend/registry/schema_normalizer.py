@@ -108,10 +108,16 @@ class SchemaNormalizer:
 
     @classmethod
     def normalize_product_record(cls, provider_id: str, raw: Dict[str, Any]) -> ProductRecord:
-        """Convert provider-specific product dictionary into canonical ProductRecord."""
+        """Convert provider-specific product dictionary into canonical ProductRecord dynamically preserving attributes."""
+        category = raw.get("category", "general")
+
         if provider_id == "provider_alpha":
             # Alpha schema: { id, sku, name, brand, price, currency, specs: { cpu, ram, storage... }, stock_quantity }
             raw_specs = raw.get("specs", {})
+            # Separate standard fields from category-specific dynamic attributes
+            standard_keys = {"cpu", "ram", "storage", "display", "battery", "weight_kg", "warranty", "os", "gpu"}
+            extra_attrs = {k: v for k, v in raw_specs.items() if k not in standard_keys}
+
             specs = ProductSpecs(
                 cpu=raw_specs.get("cpu", "unknown"),
                 ram=raw_specs.get("ram", "unknown"),
@@ -120,7 +126,9 @@ class SchemaNormalizer:
                 battery=raw_specs.get("battery", "unknown"),
                 weight_kg=raw_specs.get("weight_kg"),
                 warranty=raw_specs.get("warranty", "unknown"),
-                os=raw_specs.get("os", "unknown")
+                os=raw_specs.get("os", "unknown"),
+                category=category,
+                attributes=extra_attrs
             )
             return ProductRecord(
                 product_id=str(raw["id"]),
@@ -146,6 +154,9 @@ class SchemaNormalizer:
             # Beta schema: { item_sku, item_title, manufacturer, cost, curr, hardware: { processor, memory, drive, screen, runtime_hours, guarantee } }
             hw = raw.get("hardware", {})
             battery_str = f"{hw.get('runtime_hours', 'unknown')} hrs" if "runtime_hours" in hw and hw["runtime_hours"] is not None else "unknown"
+            standard_beta_keys = {"processor", "memory", "drive", "screen", "runtime_hours", "mass_kg", "guarantee", "operating_system"}
+            extra_attrs = {k: v for k, v in hw.items() if k not in standard_beta_keys}
+
             specs = ProductSpecs(
                 cpu=hw.get("processor", "unknown"),
                 ram=hw.get("memory", "unknown"),
@@ -154,7 +165,9 @@ class SchemaNormalizer:
                 battery=battery_str,
                 weight_kg=hw.get("mass_kg"),
                 warranty=hw.get("guarantee", "unknown"),
-                os=hw.get("operating_system", "unknown")
+                os=hw.get("operating_system", "unknown"),
+                category=category,
+                attributes=extra_attrs
             )
             return ProductRecord(
                 product_id=str(raw["item_sku"]),
@@ -177,6 +190,8 @@ class SchemaNormalizer:
             )
 
         # Fallback generic mapping
+        raw_specs = raw.get("specs") or raw.get("attributes") or {}
+        specs = ProductSpecs(category=category, attributes=dict(raw_specs)) if isinstance(raw_specs, dict) else ProductSpecs()
         return ProductRecord(
             product_id=str(raw.get("id") or raw.get("sku") or "unknown_id"),
             provider_id=provider_id,
@@ -185,6 +200,7 @@ class SchemaNormalizer:
             brand=str(raw.get("brand") or "Generic"),
             price=float(raw.get("price") or raw.get("cost") or 0.0),
             currency=str(raw.get("currency") or "INR"),
+            specs=specs,
             provenance=f"Provider {provider_id}",
             is_demo=True,
             verification_status="unverified"

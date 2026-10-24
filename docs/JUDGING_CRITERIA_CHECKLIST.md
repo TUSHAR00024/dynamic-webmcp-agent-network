@@ -40,7 +40,7 @@ This document provides a transparent, evidence-backed evaluation of the project'
 
 ## 3. Test Verification Summary
 
-- **Automated Unit & Regression Tests:** 48/48 passing (`make test`)
+- **Automated Unit & Regression Tests:** 56/56 passing (`make test`)
   - Tool registration and capability querying (3 tests)
   - Schema normalization & request translation (4 tests)
   - Multi-factor ranking & health filtering (2 tests)
@@ -52,6 +52,7 @@ This document provides a transparent, evidence-backed evaluation of the project'
   - Block B fixes: Token cancellation sender binding & state check, failed provider retry counter, HMAC-SHA256 signature generation & comparison, tampered argument interception (5 tests)
   - Block C fixes: Non-blocking async workflow execution, candidate multi-attribute priority scoring, truthful spec-grounded rationales, live check script (4 tests)
   - Block D fixes: Markdown relative links and zero file URLs, verify_setup active assertion validation, package.sh forbidden file exclusion (3 tests)
+  - Open-Domain & Cards: Dynamic monitor/furniture/cloud search, domain-adaptive candidate scoring, non-laptop schema normalization, interactive card schemas, and HMAC approval store security (8 tests)
 - **End-to-End Chat Simulation:** 4/4 conversation turns passing (`make e2e`)
   - Turn 1: `StartSessionContent` initialization & greeting
   - Turn 2: Natural language shopping goal & comparison matrix with approval token

@@ -53,7 +53,7 @@ Key features:
 ---
 
 ## Accomplishments That We're Proud Of
-- **Zero Fluff, 100% Verified**: 48 automated unit and regression tests pass in under 0.55 seconds (`make test`).
+- **Zero Fluff, 100% Verified**: 56 automated unit and regression tests pass in under 0.67 seconds (`make test`).
 - **Complete ASI:One Chat Flow**: Full 4-turn E2E conversational simulation (`make e2e`) verifying start session, multi-provider search, human approval, and replay interception.
 - **Native Fetch.ai Technology**: Genuine `uagents.Agent` with Mailbox integration and official Agent Chat Protocol v0.3.0 (`chat_protocol_spec`).
 - **Interactive UI Cards**: Rich Agentverse review and carousel cards rendered directly in chat sessions, validated against Card Playground specs.

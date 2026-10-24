@@ -1,4 +1,5 @@
 """Concrete adapters for demonstration providers (Alpha, Beta, Gamma)."""
+import re
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -42,8 +43,9 @@ class ProviderAlphaAdapter(BaseProviderAdapter):
             "alpha_thinkpad_e14": {
                 "id": "alpha_thinkpad_e14",
                 "sku": "LNV-TP-E14-G5",
-                "name": "Lenovo ThinkPad E14 Gen 5",
+                "name": "Lenovo ThinkPad E14 Gen 5 Laptop",
                 "brand": "Lenovo",
+                "category": "laptops",
                 "price": 64990.0,
                 "currency": "INR",
                 "specs": {
@@ -64,8 +66,9 @@ class ProviderAlphaAdapter(BaseProviderAdapter):
             "alpha_swift_go14": {
                 "id": "alpha_swift_go14",
                 "sku": "ACR-SW-GO14-I5",
-                "name": "Acer Swift Go 14",
+                "name": "Acer Swift Go 14 Laptop",
                 "brand": "Acer",
+                "category": "laptops",
                 "price": 58990.0,
                 "currency": "INR",
                 "specs": {
@@ -86,8 +89,9 @@ class ProviderAlphaAdapter(BaseProviderAdapter):
             "alpha_inspiron_15": {
                 "id": "alpha_inspiron_15",
                 "sku": "DLL-INS-3520-U",
-                "name": "Dell Inspiron 15 3520",
+                "name": "Dell Inspiron 15 3520 Laptop",
                 "brand": "Dell",
+                "category": "laptops",
                 "price": 47990.0,
                 "currency": "INR",
                 "specs": {
@@ -110,6 +114,7 @@ class ProviderAlphaAdapter(BaseProviderAdapter):
                 "sku": "APL-MBA-M2-256",
                 "name": "Apple MacBook Air 13-inch (M2)",
                 "brand": "Apple",
+                "category": "laptops",
                 "price": 89900.0,  # Over-budget limit test
                 "currency": "INR",
                 "specs": {
@@ -126,6 +131,89 @@ class ProviderAlphaAdapter(BaseProviderAdapter):
                 "rating": 4.8,
                 "reviews_count": 520,
                 "product_url": "https://techmart.example.com/p/alpha_macbook_air_m2"
+            },
+            # --- Open-Domain Additions: Monitors, Furniture, Cloud Services ---
+            "alpha_dell_u2723qe": {
+                "id": "alpha_dell_u2723qe",
+                "sku": "DLL-MN-U2723QE-4K",
+                "name": "Dell UltraSharp U2723QE 27-inch 4K UHD Monitor",
+                "brand": "Dell",
+                "category": "monitors",
+                "price": 54990.0,
+                "currency": "INR",
+                "specs": {
+                    "display": "27.0-inch 4K UHD (3840 x 2160) IPS Black",
+                    "refresh_rate": "60Hz",
+                    "resolution": "4K UHD 2160p",
+                    "ports": "USB-C 90W PD, HDMI, DisplayPort 1.4, RJ45",
+                    "warranty": "3-Year Advanced Exchange Service",
+                    "color_gamut": "100% sRGB, 98% DCI-P3"
+                },
+                "stock_quantity": 18,
+                "rating": 4.8,
+                "reviews_count": 215,
+                "product_url": "https://techmart.example.com/p/alpha_dell_u2723qe"
+            },
+            "alpha_lg_27gr75q": {
+                "id": "alpha_lg_27gr75q",
+                "sku": "LG-MN-27GR75Q-QHD",
+                "name": "LG UltraGear 27GR75Q 27-inch QHD Gaming Monitor",
+                "brand": "LG",
+                "category": "monitors",
+                "price": 24990.0,
+                "currency": "INR",
+                "specs": {
+                    "display": "27.0-inch QHD (2560 x 1440) IPS 1ms G-Sync",
+                    "refresh_rate": "165Hz",
+                    "resolution": "QHD 1440p",
+                    "ports": "2x HDMI 2.0, DisplayPort 1.4",
+                    "warranty": "3-Year Onsite Warranty",
+                    "hdr": "HDR10"
+                },
+                "stock_quantity": 25,
+                "rating": 4.6,
+                "reviews_count": 340,
+                "product_url": "https://techmart.example.com/p/alpha_lg_27gr75q"
+            },
+            "alpha_featherlite_helix": {
+                "id": "alpha_featherlite_helix",
+                "sku": "FTH-CH-HELIX-HB",
+                "name": "Featherlite Helix High-Back Ergonomic Office Chair",
+                "brand": "Featherlite",
+                "category": "furniture",
+                "price": 18990.0,
+                "currency": "INR",
+                "specs": {
+                    "material": "Breathable Korean Mesh & Aluminum Alloy",
+                    "ergonomics": "Adjustable Lumbar Support, 3D Armrests, Multi-lock Synchro Tilt",
+                    "weight_capacity": "135 kg",
+                    "warranty": "3-Year Manufacturer Warranty"
+                },
+                "stock_quantity": 15,
+                "rating": 4.5,
+                "reviews_count": 89,
+                "product_url": "https://techmart.example.com/p/alpha_featherlite_helix"
+            },
+            "alpha_aws_cloud_tier": {
+                "id": "alpha_aws_cloud_tier",
+                "sku": "AWS-CL-COMPUTE-PRO",
+                "name": "AWS Cloud Compute Enterprise Tier Credits",
+                "brand": "AWS",
+                "category": "cloud_services",
+                "price": 34990.0,
+                "currency": "INR",
+                "specs": {
+                    "tier": "Enterprise Cloud Compute Tier",
+                    "vcpus": "32 vCPUs Allocated",
+                    "ram": "128GB Cloud Memory Pool",
+                    "uptime_sla": "99.99%",
+                    "support": "24/7 Enterprise Dedicated Support",
+                    "warranty": "Enterprise Cloud SLA"
+                },
+                "stock_quantity": 999,
+                "rating": 4.9,
+                "reviews_count": 412,
+                "product_url": "https://techmart.example.com/p/alpha_aws_cloud_tier"
             }
         }
 
@@ -216,15 +304,26 @@ class ProviderAlphaAdapter(BaseProviderAdapter):
         action_id = f"act_alpha_{uuid.uuid4().hex[:8]}"
 
         if tool_name == "search_products":
-            q = str(arguments.get("query", "")).lower()
+            q = str(arguments.get("query", "")).lower().strip()
             max_p = arguments.get("max_price")
             matches = []
+            q_terms = [t for t in re.split(r"[\s,]+", q) if len(t) > 2]
+
             for p in self._products.values():
                 if max_p is not None and p["price"] > float(max_p):
                     continue
-                # Match title or specs
-                searchable = f"{p['name']} {p['brand']} {p['specs']}".lower()
-                if not q or q in searchable or "laptop" in q:
+                cat = p.get("category", "")
+                specs_dict = p.get("specs", {})
+                specs_str = " ".join(f"{k} {v}" for k, v in specs_dict.items())
+                searchable = f"{p['name']} {p['brand']} {cat} {specs_str}".lower()
+
+                if not q:
+                    matches.append(p)
+                elif q in searchable:
+                    matches.append(p)
+                elif q_terms and any(t in searchable for t in q_terms):
+                    matches.append(p)
+                elif "laptop" in q and ("laptop" in searchable or cat == "laptops"):
                     matches.append(p)
 
             dur = (time.time() - start_t) * 1000
@@ -391,8 +490,9 @@ class ProviderBetaAdapter(BaseProviderAdapter):
         self._items = {
             "beta_vivobook_s14": {
                 "item_sku": "beta_vivobook_s14",
-                "item_title": "ASUS Vivobook S 14 OLED",
+                "item_title": "ASUS Vivobook S 14 OLED Laptop",
                 "manufacturer": "ASUS",
+                "category": "laptops",
                 "cost": 68990.0,
                 "curr": "INR",
                 "hardware": {
@@ -411,8 +511,9 @@ class ProviderBetaAdapter(BaseProviderAdapter):
             },
             "beta_latitude_3440": {
                 "item_sku": "beta_latitude_3440",
-                "item_title": "Dell Latitude 3440 Enterprise",
+                "item_title": "Dell Latitude 3440 Enterprise Laptop",
                 "manufacturer": "Dell",
+                "category": "laptops",
                 "cost": 62490.0,
                 "curr": "INR",
                 "hardware": {
@@ -431,8 +532,9 @@ class ProviderBetaAdapter(BaseProviderAdapter):
             },
             "beta_tuf_f15": {
                 "item_sku": "beta_tuf_f15",
-                "item_title": "ASUS TUF Gaming F15",
+                "item_title": "ASUS TUF Gaming F15 Laptop",
                 "manufacturer": "ASUS",
+                "category": "laptops",
                 "cost": 54990.0,
                 "curr": "INR",
                 "hardware": {
@@ -453,6 +555,7 @@ class ProviderBetaAdapter(BaseProviderAdapter):
                 "item_sku": "beta_hp_pavilion_14",
                 "item_title": "HP Pavilion 14 x360",
                 "manufacturer": "HP",
+                "category": "laptops",
                 "cost": 74990.0,  # Over-budget limit test
                 "curr": "INR",
                 "hardware": {
@@ -466,6 +569,76 @@ class ProviderBetaAdapter(BaseProviderAdapter):
                 "units_available": 6,
                 "customer_rating": 4.5,
                 "total_reviews": 88
+            },
+            # --- Open-Domain Additions: Monitors, Furniture, Subscriptions ---
+            "beta_samsung_odyssey_g5": {
+                "item_sku": "beta_samsung_odyssey_g5",
+                "item_title": "Samsung Odyssey G5 32-inch Curved QHD Gaming Monitor",
+                "manufacturer": "Samsung",
+                "category": "monitors",
+                "cost": 26990.0,
+                "curr": "INR",
+                "hardware": {
+                    "screen": "32.0-inch 1000R Curved QHD (2560x1440) 165Hz 1ms",
+                    "refresh_rate": "165Hz",
+                    "resolution": "QHD 1440p",
+                    "response_time": "1ms MPRT",
+                    "guarantee": "3-Year Manufacturer Warranty"
+                },
+                "units_available": 14,
+                "customer_rating": 4.6,
+                "total_reviews": 182
+            },
+            "beta_benq_pd2705u": {
+                "item_sku": "beta_benq_pd2705u",
+                "item_title": "BenQ DesignVue PD2705U 27-inch 4K Designer Monitor",
+                "manufacturer": "BenQ",
+                "category": "monitors",
+                "cost": 46990.0,
+                "curr": "INR",
+                "hardware": {
+                    "screen": "27.0-inch 4K UHD (3840x2160) IPS 100% sRGB / Rec.709",
+                    "refresh_rate": "60Hz",
+                    "resolution": "4K UHD 2160p",
+                    "ports": "USB-C 65W PD, HDMI 2.0, DisplayPort 1.4",
+                    "guarantee": "3-Year Onsite Warranty"
+                },
+                "units_available": 7,
+                "customer_rating": 4.7,
+                "total_reviews": 75
+            },
+            "beta_steelcase_series1": {
+                "item_sku": "beta_steelcase_series1",
+                "item_title": "Steelcase Series 1 Ergonomic Task Chair",
+                "manufacturer": "Steelcase",
+                "category": "furniture",
+                "cost": 38990.0,
+                "curr": "INR",
+                "hardware": {
+                    "frame": "LiveBack Flexor Technology, 4D Adjustable Arms",
+                    "ergonomics": "Weight-Activated Synchro-Tilt, Height-Adjustable Lumbar",
+                    "guarantee": "12-Year Multi-Shift Warranty"
+                },
+                "units_available": 10,
+                "customer_rating": 4.8,
+                "total_reviews": 110
+            },
+            "beta_jetbrains_all_pack": {
+                "item_sku": "beta_jetbrains_all_pack",
+                "item_title": "JetBrains All Products Pack Commercial Subscription",
+                "manufacturer": "JetBrains",
+                "category": "software_subscriptions",
+                "cost": 49900.0,
+                "curr": "INR",
+                "hardware": {
+                    "licenses": "Complete 16 IDEs Commercial License (IntelliJ, PyCharm, WebStorm, GoLand)",
+                    "tier": "Annual Commercial Cloud Subscription",
+                    "platform": "Cross-Platform Cloud-Synced",
+                    "guarantee": "1-Year Full Commercial Updates & Fallback Perpetual"
+                },
+                "units_available": 999,
+                "customer_rating": 4.9,
+                "total_reviews": 512
             }
         }
 
@@ -555,14 +728,26 @@ class ProviderBetaAdapter(BaseProviderAdapter):
         action_id = f"act_beta_{uuid.uuid4().hex[:8]}"
 
         if tool_name == "find_items":
-            kw = str(arguments.get("keywords", "")).lower()
+            kw = str(arguments.get("keywords", "")).lower().strip()
             budget = arguments.get("budget")
             matches = []
+            kw_terms = [t for t in re.split(r"[\s,]+", kw) if len(t) > 2]
+
             for item in self._items.values():
                 if budget is not None and item["cost"] > float(budget):
                     continue
-                searchable = f"{item['item_title']} {item['manufacturer']} {item['hardware']}".lower()
-                if not kw or kw in searchable or "laptop" in kw:
+                cat = item.get("category", "")
+                hw_dict = item.get("hardware", {})
+                hw_str = " ".join(f"{k} {v}" for k, v in hw_dict.items())
+                searchable = f"{item['item_title']} {item['manufacturer']} {cat} {hw_str}".lower()
+
+                if not kw:
+                    matches.append(item)
+                elif kw in searchable:
+                    matches.append(item)
+                elif kw_terms and any(t in searchable for t in kw_terms):
+                    matches.append(item)
+                elif "laptop" in kw and ("laptop" in searchable or cat == "laptops"):
                     matches.append(item)
 
             dur = (time.time() - start_t) * 1000

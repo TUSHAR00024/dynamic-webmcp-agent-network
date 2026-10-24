@@ -273,7 +273,14 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
     ]
     for c in candidates[:3]:
         specs = c.get("specs", {})
-        spec_summary = f"{specs.get('cpu', 'N/A')} • {specs.get('ram', 'N/A')} • {specs.get('battery', 'N/A')}"
+        if specs.get("refresh_rate") or specs.get("resolution"):
+            spec_summary = f"{specs.get('resolution', 'HD')} • {specs.get('refresh_rate', '60Hz')} • {specs.get('warranty', 'Warranty')}"
+        elif specs.get("ergonomics") or specs.get("material"):
+            spec_summary = f"{specs.get('material', 'Mesh')} • {specs.get('ergonomics', 'Ergonomic')} • {specs.get('warranty', 'Warranty')}"
+        elif specs.get("uptime_sla") or specs.get("tier"):
+            spec_summary = f"{specs.get('tier', 'Tier')} • SLA: {specs.get('uptime_sla', '99.9%')}"
+        else:
+            spec_summary = f"{specs.get('cpu', 'N/A')} • {specs.get('ram', 'N/A')} • {specs.get('battery', 'N/A')}"
         is_top = "⭐ " if (top and (c.get("sku") == top.get("sku") or c.get("product_id") == top.get("product_id"))) else ""
         c_title = c.get("title") or c.get("name", "Product")
         table_lines.append(f"| {is_top}**{c_title}** | `{c.get('provider_id')}` | {spec_summary} | ₹{Number(c.get('price', 0)):,.0f} |")
@@ -317,8 +324,9 @@ def Number(val):
         return 0.0
 
 
-# Include chat protocol in agent definition with manifest publishing
-agent.include(chat_proto, publish_manifest=True)
+# Include chat protocol in agent definition (publish_manifest disabled by default in test/isolated runs to prevent unawaited background tasks)
+should_publish = os.getenv("PUBLISH_MANIFEST", "false").lower() == "true"
+agent.include(chat_proto, publish_manifest=should_publish)
 
 if __name__ == "__main__":
     if not validate_agent_config():

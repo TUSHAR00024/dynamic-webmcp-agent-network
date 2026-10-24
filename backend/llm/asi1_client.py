@@ -195,17 +195,33 @@ class ASI1Client:
         if not top_recommendation:
             return "No candidates met all hard constraints."
 
-        title = top_recommendation.get("title") or top_recommendation.get("name", "Selected laptop")
+        title = top_recommendation.get("title") or top_recommendation.get("name", "Selected item")
         price = top_recommendation.get("price", 0)
         provider = top_recommendation.get("provider_id", "Provider")
         specs = top_recommendation.get("specs", {})
-        cpu = specs.get("cpu", "standard processor")
-        ram = specs.get("ram", "standard RAM")
-        battery = specs.get("battery", "unknown")
-        warranty = specs.get("warranty", "unknown")
+        warranty = specs.get("warranty") or specs.get("guarantee", "unknown")
+        warranty_phrase = "standard manufacturer terms" if "unknown" in str(warranty).lower() else f"{warranty}"
 
-        battery_phrase = "battery endurance is unverified/unknown" if "unknown" in str(battery).lower() else f"equipped with {battery}"
-        warranty_phrase = "standard manufacturer terms" if "unknown" in str(warranty).lower() else f"{warranty} warranty"
+        # Dynamic domain-aware feature description
+        if specs.get("refresh_rate") or specs.get("resolution"):
+            disp = specs.get("display") or specs.get("screen", "High-Resolution Display")
+            rr = specs.get("refresh_rate", "")
+            res = specs.get("resolution", "")
+            feature_desc = f"{disp} ({res} • {rr}, {warranty_phrase})"
+        elif specs.get("ergonomics") or specs.get("material") or specs.get("frame"):
+            mat = specs.get("material") or specs.get("frame", "Ergonomic Build")
+            ergo = specs.get("ergonomics", "Full adjustability")
+            feature_desc = f"{mat} ({ergo}, {warranty_phrase})"
+        elif specs.get("uptime_sla") or specs.get("tier") or specs.get("licenses"):
+            tier = specs.get("tier") or specs.get("licenses", "Cloud/Software Tier")
+            sla = specs.get("uptime_sla", "High Availability")
+            feature_desc = f"{tier} ({sla}, {warranty_phrase})"
+        else:
+            cpu = specs.get("cpu", "standard processor")
+            ram = specs.get("ram", "standard RAM")
+            battery = specs.get("battery", "unknown")
+            battery_phrase = "battery endurance is unverified/unknown" if "unknown" in str(battery).lower() else f"equipped with {battery}"
+            feature_desc = f"{cpu} and {ram} ({battery_phrase}, {warranty_phrase} warranty)"
 
         runner_up_phrase = ""
         if len(candidates) > 1:
@@ -220,12 +236,12 @@ class ASI1Client:
 
         return (
             f"Evaluated {len(candidates)} candidate options against your constraints. "
-            f"Recommended '{title}' (₹{price:,.0f} on `{provider}`) featuring {cpu} and {ram} ({battery_phrase}, {warranty_phrase})."
+            f"Recommended '{title}' (₹{price:,.0f} on `{provider}`) featuring {feature_desc}."
             f"{runner_up_phrase}"
         )
 
     def _deterministic_extract(self, prompt: str) -> ExtractedPlan:
-        """Robust deterministic parser recognizing Indian number formats, currencies, and keywords."""
+        """Robust deterministic parser recognizing open-domain categories, Indian number formats, currencies, and keywords."""
         p_lower = prompt.lower()
         max_budget = None
 
@@ -255,7 +271,7 @@ class ASI1Client:
 
         # Quantity extraction (e.g., "2 laptops", "3 units")
         quantity = 1
-        qty_match = re.search(r"\b(?P<qty>\d+)\s*(?:laptops?|phones?|items?|units?)\b", p_lower)
+        qty_match = re.search(r"\b(?P<qty>\d+)\s*(?:laptops?|phones?|items?|units?|monitors?|chairs?)\b", p_lower)
         if qty_match:
             try:
                 quantity = int(qty_match.group("qty"))
@@ -270,18 +286,46 @@ class ASI1Client:
             priorities.append("battery")
         if any(w in p_lower for w in ["reliability", "durable", "warranty", "robust", "support"]):
             priorities.append("reliability")
-        if any(w in p_lower for w in ["gaming", "gpu", "graphics"]):
+        if any(w in p_lower for w in ["gaming", "gpu", "graphics", "refresh", "165hz", "144hz"]):
             priorities.append("gaming")
+        if any(w in p_lower for w in ["ergonomic", "lumbar", "mesh", "comfort", "posture"]):
+            priorities.append("ergonomic")
+        if any(w in p_lower for w in ["uptime", "sla", "scale", "cloud"]):
+            priorities.append("uptime")
 
-        # Category & query
+        # Open-domain category & query extraction
         category = "laptops"
         query = "laptop"
-        if "phone" in p_lower or "mobile" in p_lower:
+        if any(w in p_lower for w in ["monitor", "monitors", "display", "screen"]):
+            category = "monitors"
+            query = "monitor"
+        elif any(w in p_lower for w in ["chair", "chairs", "furniture", "desk", "table"]):
+            category = "furniture"
+            query = "office chair"
+        elif any(w in p_lower for w in ["cloud", "aws", "compute", "hosting", "server", "vcpus"]):
+            category = "cloud_services"
+            query = "cloud compute"
+        elif any(w in p_lower for w in ["subscription", "software", "license", "jetbrains", "saas"]):
+            category = "software_subscriptions"
+            query = "software subscription"
+        elif any(w in p_lower for w in ["travel", "flight", "hotel", "booking"]):
+            category = "travel"
+            query = "booking"
+        elif "phone" in p_lower or "mobile" in p_lower:
             category = "phones"
             query = "phone"
         elif "headphone" in p_lower or "audio" in p_lower or "earbuds" in p_lower:
             category = "audio"
             query = "headphones"
+        elif any(w in p_lower for w in ["laptop", "laptops", "notebook", "macbook", "thinkpad", "vivobook", "computer"]):
+            category = "laptops"
+            query = "laptop"
+        else:
+            words = [w for w in re.findall(r"\b[a-z]{3,}\b", p_lower)
+                     if w not in ("find", "best", "the", "under", "below", "with", "for", "and", "cart", "add")]
+            if words:
+                category = "general"
+                query = " ".join(words[:2])
 
         # Word-boundary target_action check: must not match "additional ram"
         target_action = None

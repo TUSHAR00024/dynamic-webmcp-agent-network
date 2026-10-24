@@ -22,10 +22,27 @@ def build_product_carousel_card(
         provider = item.get("provider_id", "Unknown")
 
         specs = item.get("specs", {})
-        cpu = specs.get("cpu", "Standard CPU")
-        ram = specs.get("ram", "Standard RAM")
-        battery = specs.get("battery", "Standard Battery")
-        secondary_text = f"{cpu} • {ram} • {battery}"
+        # Domain-adaptive secondary text
+        if specs.get("refresh_rate") or specs.get("resolution"):
+            disp = specs.get("display") or specs.get("screen", "Monitor")
+            rr = specs.get("refresh_rate", "")
+            res = specs.get("resolution", "")
+            secondary_text = f"{disp} • {res} • {rr}".strip(" •")
+        elif specs.get("ergonomics") or specs.get("material"):
+            mat = specs.get("material", "Ergonomic Build")
+            ergo = specs.get("ergonomics", "Adjustable")
+            secondary_text = f"{mat} • {ergo}"
+        elif specs.get("uptime_sla") or specs.get("tier"):
+            tier = specs.get("tier", "Cloud Tier")
+            sla = specs.get("uptime_sla", "99.99%")
+            secondary_text = f"{tier} • SLA: {sla}"
+        elif specs.get("cpu") and specs.get("cpu") != "unknown":
+            cpu = specs.get("cpu", "Standard CPU")
+            ram = specs.get("ram", "Standard RAM")
+            battery = specs.get("battery", "Standard Battery")
+            secondary_text = f"{cpu} • {ram} • {battery}"
+        else:
+            secondary_text = "Verified Specifications"
 
         is_top = bool(top_id and p_id == top_id)
         badges = ["⭐ Top Pick"] if is_top else []
