@@ -117,20 +117,38 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function hasValidSpec(val) {
+    if (val === null || val === undefined) return false;
+    const str = String(val).trim().toLowerCase();
+    return str !== "" && str !== "unknown" && str !== "n/a" && str !== "undefined" && str !== "none" && str !== "null";
+  }
+
   function detectCategory(p) {
-    if (p.category) {
-      const c = String(p.category).toLowerCase();
-      if (c.includes("laptop") || c.includes("notebook")) return "laptops";
-      if (c.includes("monitor") || c.includes("display")) return "monitors";
-      if (c.includes("furniture") || c.includes("chair") || c.includes("desk")) return "furniture";
-      if (c.includes("cloud") || c.includes("software") || c.includes("service")) return "cloud_services";
-      return c;
+    if (!p) return "general";
+
+    // 1. Direct category check on product or nested specs
+    const cat = (p.category || p.specs?.category || "").toString().toLowerCase().trim();
+    if (cat) {
+      if (cat.includes("chair") || cat.includes("furniture") || cat.includes("desk")) return "furniture";
+      if (cat.includes("monitor") || cat.includes("display") || cat.includes("screen")) return "monitors";
+      if (cat.includes("cloud") || cat.includes("software") || cat.includes("sub") || cat.includes("service")) return "cloud_services";
+      if (cat.includes("laptop") || cat.includes("notebook")) return "laptops";
     }
+
+    // 2. Title & name keyword check
+    const title = (p.title || p.name || "").toString().toLowerCase();
+    if (title.includes("chair") || title.includes("ergonomic") || title.includes("featherlite") || title.includes("steelcase")) return "furniture";
+    if (title.includes("monitor") || title.includes("ultrasharp") || title.includes("odyssey") || title.includes("4k") || title.includes("165hz")) return "monitors";
+    if (title.includes("cloud") || title.includes("aws") || title.includes("jetbrains") || title.includes("compute")) return "cloud_services";
+    if (title.includes("laptop") || title.includes("thinkpad") || title.includes("vivobook") || title.includes("swift go") || title.includes("inspiron")) return "laptops";
+
+    // 3. Concrete specs check (ignoring "unknown")
     const s = p.specs || {};
-    if (s.cpu || s.ram) return "laptops";
-    if (s.resolution || s.refresh_rate) return "monitors";
-    if (s.ergonomics || s.material) return "furniture";
-    if (s.tier || s.uptime_sla || s.subscription) return "cloud_services";
+    if (hasValidSpec(s.material) || hasValidSpec(s.ergonomics) || hasValidSpec(s.weight_capacity)) return "furniture";
+    if (hasValidSpec(s.refresh_rate) || hasValidSpec(s.resolution) || hasValidSpec(s.panel_type)) return "monitors";
+    if (hasValidSpec(s.tier) || hasValidSpec(s.uptime_sla) || hasValidSpec(s.subscription) || hasValidSpec(s.ide_support)) return "cloud_services";
+    if (hasValidSpec(s.cpu) || (hasValidSpec(s.ram) && hasValidSpec(s.storage))) return "laptops";
+
     return "general";
   }
 
@@ -170,10 +188,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (cat === "furniture") {
       return `
-        <li><strong>Material:</strong> ${s.material || "Ergonomic Mesh"}</li>
+        <li><strong>Material:</strong> ${s.material || s.frame || "Ergonomic Mesh"}</li>
         <li><strong>Ergonomics:</strong> ${s.ergonomics || "Adjustable Lumbar Support"}</li>
         <li><strong>Weight Capacity:</strong> ${s.weight_capacity || "120+ kg"}</li>
-        <li><strong>Warranty:</strong> ${s.warranty || "N/A"}</li>
+        <li><strong>Warranty:</strong> ${s.warranty || s.guarantee || "N/A"}</li>
       `;
     }
 
@@ -464,46 +482,54 @@ document.addEventListener("DOMContentLoaded", () => {
     const dominantCat = detectCategory(topRec || candidates[0]);
     let specRows = [];
 
-    if (dominantCat === "monitors") {
+    if (dominantCat === "furniture") {
       specRows = [
-        { label: "Display & Resolution", get: c => `${c.specs?.screen_size || ""} ${c.specs?.resolution || "High-Res"}` },
-        { label: "Refresh Rate", get: c => c.specs?.refresh_rate || "60Hz" },
-        { label: "Panel & Color Gamut", get: c => `${c.specs?.panel_type || "IPS"} ${c.specs?.color_gamut ? "• " + c.specs.color_gamut : ""}` },
-        { label: "Ports / Ergonomics", get: c => `${c.specs?.ports || ""} ${c.specs?.stand ? "• " + c.specs.stand : ""}` },
-        { label: "Warranty & Support", get: c => c.specs?.warranty || "Standard" }
+        { label: "Ergonomics & Adjustability", get: c => c.specs?.ergonomics || c.specs?.frame },
+        { label: "Material & Build", get: c => c.specs?.material || c.specs?.frame },
+        { label: "Weight Capacity", get: c => c.specs?.weight_capacity },
+        { label: "Warranty & Support", get: c => c.specs?.warranty || c.specs?.guarantee }
       ];
-    } else if (dominantCat === "furniture") {
+    } else if (dominantCat === "monitors") {
       specRows = [
-        { label: "Material & Build", get: c => c.specs?.material || "Ergonomic Mesh" },
-        { label: "Ergonomics / Adjustability", get: c => c.specs?.ergonomics || "Adjustable Support" },
-        { label: "Weight Capacity", get: c => c.specs?.weight_capacity || "120+ kg" },
-        { label: "Warranty & Coverage", get: c => c.specs?.warranty || "Manufacturer Warranty" }
+        { label: "Display & Resolution", get: c => [c.specs?.screen_size, c.specs?.resolution].filter(hasValidSpec).join(" ") },
+        { label: "Refresh Rate", get: c => c.specs?.refresh_rate },
+        { label: "Panel & Color Gamut", get: c => [c.specs?.panel_type, c.specs?.color_gamut].filter(hasValidSpec).join(" • ") },
+        { label: "Ports / Stand Ergonomics", get: c => [c.specs?.ports, c.specs?.stand].filter(hasValidSpec).join(" • ") },
+        { label: "Warranty & Support", get: c => c.specs?.warranty }
       ];
     } else if (dominantCat === "cloud_services") {
       specRows = [
-        { label: "Tier / Edition", get: c => c.specs?.tier || c.specs?.subscription || "Enterprise" },
-        { label: "Allocated Resources", get: c => `${c.specs?.vcpus || ""} ${c.specs?.ram ? "• " + c.specs.ram : (c.specs?.ide_support || "")}` },
-        { label: "Uptime SLA", get: c => c.specs?.uptime_sla || "99.9%" },
-        { label: "Support Level", get: c => c.specs?.support || c.specs?.warranty || "24/7 Dedicated" }
+        { label: "Tier / Edition", get: c => c.specs?.tier || c.specs?.subscription },
+        { label: "Allocated Resources", get: c => [c.specs?.vcpus, c.specs?.ram, c.specs?.ide_support].filter(hasValidSpec).join(" • ") },
+        { label: "Uptime SLA", get: c => c.specs?.uptime_sla },
+        { label: "Support Level", get: c => c.specs?.support || c.specs?.warranty }
       ];
     } else if (dominantCat === "laptops") {
       specRows = [
-        { label: "CPU Performance", get: c => c.specs?.cpu || "N/A" },
-        { label: "RAM / Storage", get: c => `${c.specs?.ram || "N/A"} • ${c.specs?.storage || "N/A"}` },
-        { label: "Battery Life", get: c => c.specs?.battery || "N/A" },
-        { label: "Display", get: c => c.specs?.display || "N/A" },
-        { label: "Warranty & Support", get: c => c.specs?.warranty || "N/A" }
+        { label: "CPU Performance", get: c => c.specs?.cpu },
+        { label: "RAM / Storage", get: c => [c.specs?.ram, c.specs?.storage].filter(hasValidSpec).join(" • ") },
+        { label: "Battery Life", get: c => c.specs?.battery },
+        { label: "Display", get: c => c.specs?.display },
+        { label: "Warranty & Support", get: c => c.specs?.warranty }
       ];
     } else {
       // Dynamic union of candidate specs keys
-      const allKeys = new Set();
-      candidates.forEach(c => Object.keys(c.specs || {}).forEach(k => allKeys.add(k)));
-      const selectedKeys = Array.from(allKeys).slice(0, 5);
-      specRows = selectedKeys.map(k => ({
+      const allCandidateKeys = new Set();
+      candidates.forEach(c => {
+        Object.keys(c.specs || {}).forEach(k => {
+          if (hasValidSpec(c.specs[k]) && k !== "category" && k !== "attributes") {
+            allCandidateKeys.add(k);
+          }
+        });
+      });
+      specRows = Array.from(allCandidateKeys).slice(0, 5).map(k => ({
         label: k.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
-        get: c => c.specs?.[k] || "N/A"
+        get: c => c.specs?.[k]
       }));
     }
+
+    // CRITICAL FILTER: Never render rows where EVERY candidate's value is invalid, empty, or "unknown"
+    specRows = specRows.filter(row => candidates.some(c => hasValidSpec(row.get(c))));
 
     const table = document.createElement("table");
     table.className = "comparison-table";
@@ -526,7 +552,10 @@ document.addEventListener("DOMContentLoaded", () => {
         ${specRows.map(row => `
           <tr>
             <td>${row.label}</td>
-            ${candidates.map(c => `<td>${row.get(c) || "N/A"}</td>`).join("")}
+            ${candidates.map(c => {
+              const val = row.get(c);
+              return `<td>${hasValidSpec(val) ? val : "N/A"}</td>`;
+            }).join("")}
           </tr>
         `).join("")}
       </tbody>

@@ -615,8 +615,10 @@ class ProviderBetaAdapter(BaseProviderAdapter):
                 "cost": 38990.0,
                 "curr": "INR",
                 "hardware": {
+                    "material": "LiveBack 3D Micro Knit & High-Density Foam",
                     "frame": "LiveBack Flexor Technology, 4D Adjustable Arms",
                     "ergonomics": "Weight-Activated Synchro-Tilt, Height-Adjustable Lumbar",
+                    "weight_capacity": "181 kg (400 lbs)",
                     "guarantee": "12-Year Multi-Shift Warranty"
                 },
                 "units_available": 10,

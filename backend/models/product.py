@@ -95,6 +95,7 @@ class ProductRecord:
     brand: str
     price: float
     currency: str = "INR"
+    category: str = "general"
     specs: ProductSpecs = field(default_factory=ProductSpecs)
     stock_status: str = "in_stock"
     stock_count: int = 10
