@@ -29,6 +29,25 @@ from uagents_core.contrib.protocols.chat import (
     chat_protocol_spec
 )
 
+# Resilience patch: Support both legacy ('acknowledged') and modern ('acknowledged_msg_id') payloads
+def _safe_chat_ack_init(self, acknowledged_msg_id=None, metadata=None, timestamp=None, acknowledged=None, **kwargs):
+    if acknowledged_msg_id is None:
+        acknowledged_msg_id = kwargs.get("msg_id") or kwargs.get("id") or uuid4()
+    if isinstance(acknowledged_msg_id, str):
+        from uuid import UUID
+        try:
+            acknowledged_msg_id = UUID(acknowledged_msg_id)
+        except Exception:
+            acknowledged_msg_id = uuid4()
+    timestamp = timestamp or datetime.now(timezone.utc)
+    super(ChatAcknowledgement, self).__init__(
+        timestamp=timestamp,
+        acknowledged_msg_id=acknowledged_msg_id,
+        metadata=metadata
+    )
+
+ChatAcknowledgement.__init__ = _safe_chat_ack_init
+
 from backend.cards import (
     create_carousel_metadata,
     create_review_metadata
