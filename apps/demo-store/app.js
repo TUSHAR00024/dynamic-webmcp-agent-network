@@ -8,6 +8,16 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentCart = { items: [], total: 0, version: 1 };
   let pendingApproval = null;
   let approvalInterval = null;
+  let allProducts = [];
+  let currentCategoryFilter = "all";
+
+  // Pre-configured multi-domain sample prompts
+  const samplePrompts = {
+    laptops: "Find the best laptop under ₹70,000 for programming and college. Search multiple websites, compare at least three suitable options, explain the trade-offs, and add the best option to my cart. Do not check out.",
+    furniture: "Find the best ergonomic office chair under ₹40,000 with lumbar support and 3D armrests. Search multiple websites, compare options, explain the trade-offs, and add the best option to my cart. Do not check out.",
+    monitors: "Find high-resolution 4K or 165Hz monitors under ₹60,000 suitable for programming and design work. Compare options across websites and add the best option to my cart. Do not check out.",
+    cloud_services: "Find enterprise cloud compute credits or software subscriptions under ₹35,000 for developer workloads. Compare options and add the best option to my cart. Do not check out."
+  };
 
   // DOM Elements
   const promptInput = document.getElementById("prompt-input");
@@ -48,9 +58,45 @@ document.addEventListener("DOMContentLoaded", () => {
   btnToggleCart.addEventListener("click", () => cartDrawer.classList.toggle("open"));
   btnCloseCart.addEventListener("click", () => cartDrawer.classList.remove("open"));
 
+  // Domain Preset Chips
+  const promptChips = document.querySelectorAll(".prompt-chip");
+  promptChips.forEach(chip => {
+    chip.addEventListener("click", () => {
+      promptChips.forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      const domain = chip.dataset.domain;
+      if (domain && samplePrompts[domain]) {
+        promptInput.value = samplePrompts[domain];
+        setCategoryFilter(domain);
+      }
+    });
+  });
+
+  // Category Filter Pills
+  const categoryPills = document.querySelectorAll(".category-pill");
+  categoryPills.forEach(pill => {
+    pill.addEventListener("click", () => {
+      setCategoryFilter(pill.dataset.category);
+    });
+  });
+
+  function setCategoryFilter(category) {
+    currentCategoryFilter = category || "all";
+    categoryPills.forEach(p => {
+      if (p.dataset.category === currentCategoryFilter) {
+        p.classList.add("active");
+      } else {
+        p.classList.remove("active");
+      }
+    });
+    renderFilteredProducts();
+  }
+
   // Reset sample prompt
   btnSamplePrompt.addEventListener("click", () => {
-    promptInput.value = "Find the best laptop under ₹70,000 for programming and college. Search multiple websites, compare at least three suitable options, explain the trade-offs, and add the best option to my cart. Do not check out.";
+    promptInput.value = samplePrompts.laptops;
+    promptChips.forEach(c => c.classList.toggle("active", c.dataset.domain === "laptops"));
+    setCategoryFilter("all");
   });
 
   // Initial Load: Fetch products and tools
@@ -62,17 +108,132 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch("/api/products");
       if (!res.ok) throw new Error("API offline");
       const data = await res.json();
-      renderProducts(data.products || []);
+      allProducts = data.products || [];
+      updateCategoryCounts();
+      renderFilteredProducts();
     } catch (e) {
-      // Fallback demo data if backend is starting
+      // Fallback demo data across domains if backend is starting
       renderDefaultProducts();
     }
+  }
+
+  function detectCategory(p) {
+    if (p.category) {
+      const c = String(p.category).toLowerCase();
+      if (c.includes("laptop") || c.includes("notebook")) return "laptops";
+      if (c.includes("monitor") || c.includes("display")) return "monitors";
+      if (c.includes("furniture") || c.includes("chair") || c.includes("desk")) return "furniture";
+      if (c.includes("cloud") || c.includes("software") || c.includes("service")) return "cloud_services";
+      return c;
+    }
+    const s = p.specs || {};
+    if (s.cpu || s.ram) return "laptops";
+    if (s.resolution || s.refresh_rate) return "monitors";
+    if (s.ergonomics || s.material) return "furniture";
+    if (s.tier || s.uptime_sla || s.subscription) return "cloud_services";
+    return "general";
+  }
+
+  function getCategoryLabel(cat) {
+    switch (cat) {
+      case "laptops": return "💻 Laptop";
+      case "monitors": return "🖥️ Monitor";
+      case "furniture": return "🪑 Office Furniture";
+      case "cloud_services": return "☁️ Cloud & Software";
+      default: return "📦 General";
+    }
+  }
+
+  function formatProductSpecs(p) {
+    const s = p.specs || {};
+    const cat = detectCategory(p);
+
+    if (cat === "laptops") {
+      return `
+        <li><strong>CPU:</strong> ${s.cpu || "N/A"}</li>
+        <li><strong>RAM / SSD:</strong> ${s.ram || "N/A"} • ${s.storage || "N/A"}</li>
+        <li><strong>Display:</strong> ${s.display || "N/A"}</li>
+        <li><strong>Battery:</strong> ${s.battery || "N/A"}</li>
+        <li><strong>Warranty:</strong> ${s.warranty || "N/A"}</li>
+      `;
+    }
+
+    if (cat === "monitors") {
+      return `
+        <li><strong>Display:</strong> ${s.screen_size || ""} ${s.resolution || "High-Res"}</li>
+        <li><strong>Refresh Rate:</strong> ${s.refresh_rate || "60Hz"}</li>
+        <li><strong>Panel & Color:</strong> ${s.panel_type || "IPS"} ${s.color_gamut ? "• " + s.color_gamut : ""}</li>
+        <li><strong>Ports / Stand:</strong> ${s.ports || s.stand || "HDMI / DP"}</li>
+        <li><strong>Warranty:</strong> ${s.warranty || "N/A"}</li>
+      `;
+    }
+
+    if (cat === "furniture") {
+      return `
+        <li><strong>Material:</strong> ${s.material || "Ergonomic Mesh"}</li>
+        <li><strong>Ergonomics:</strong> ${s.ergonomics || "Adjustable Lumbar Support"}</li>
+        <li><strong>Weight Capacity:</strong> ${s.weight_capacity || "120+ kg"}</li>
+        <li><strong>Warranty:</strong> ${s.warranty || "N/A"}</li>
+      `;
+    }
+
+    if (cat === "cloud_services") {
+      return `
+        <li><strong>Tier / Plan:</strong> ${s.tier || s.subscription || "Enterprise Tier"}</li>
+        <li><strong>Allocation:</strong> ${s.vcpus || ""} ${s.ram ? "• " + s.ram : (s.ide_support || "")}</li>
+        <li><strong>Uptime SLA:</strong> ${s.uptime_sla || "99.9%"}</li>
+        <li><strong>Support / License:</strong> ${s.support || s.warranty || "Dedicated Support"}</li>
+      `;
+    }
+
+    // Dynamic fallback for any other open domain
+    const keys = Object.keys(s).slice(0, 4);
+    if (keys.length === 0) {
+      return `<li><strong>Details:</strong> Standard specifications apply</li>`;
+    }
+    return keys.map(k => {
+      const label = k.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+      return `<li><strong>${label}:</strong> ${s[k]}</li>`;
+    }).join("");
+  }
+
+  function updateCategoryCounts() {
+    const counts = { all: allProducts.length, laptops: 0, monitors: 0, furniture: 0, cloud_services: 0 };
+    allProducts.forEach(p => {
+      const cat = detectCategory(p);
+      if (counts[cat] !== undefined) {
+        counts[cat]++;
+      }
+    });
+
+    const elAll = document.getElementById("count-all");
+    const elLaptops = document.getElementById("count-laptops");
+    const elMonitors = document.getElementById("count-monitors");
+    const elFurniture = document.getElementById("count-furniture");
+    const elCloud = document.getElementById("count-cloud");
+
+    if (elAll) elAll.textContent = counts.all;
+    if (elLaptops) elLaptops.textContent = counts.laptops;
+    if (elMonitors) elMonitors.textContent = counts.monitors;
+    if (elFurniture) elFurniture.textContent = counts.furniture;
+    if (elCloud) elCloud.textContent = counts.cloud_services;
+  }
+
+  function renderFilteredProducts() {
+    let filtered = allProducts;
+    if (currentCategoryFilter !== "all") {
+      filtered = allProducts.filter(p => detectCategory(p) === currentCategoryFilter);
+    }
+    renderProducts(filtered);
   }
 
   function renderProducts(products) {
     productsGrid.innerHTML = "";
     if (products.length === 0) {
-      productsGrid.innerHTML = "<p>No products available.</p>";
+      productsGrid.innerHTML = `
+        <div style="grid-column: 1 / -1; padding: 2.5rem; text-align: center; color: var(--text-muted);">
+          <p>No products found in this category.</p>
+        </div>`;
       return;
     }
 
@@ -80,21 +241,23 @@ document.addEventListener("DOMContentLoaded", () => {
       const isAlpha = p.provider_id === "provider_alpha";
       const pillClass = isAlpha ? "pill-alpha" : "pill-beta";
       const providerLabel = isAlpha ? "Provider Alpha (TechMart)" : "Provider Beta (ElectroStore)";
+      const cat = detectCategory(p);
+      const catLabel = getCategoryLabel(cat);
 
       const card = document.createElement("div");
       card.className = "product-card";
       card.innerHTML = `
         <div class="product-badge-row">
           <span class="provider-pill ${pillClass}">${providerLabel}</span>
-          <span class="stock-badge ${p.stock_status}">${p.stock_status === "in_stock" ? "In Stock" : "Out of Stock"}</span>
+          <span class="category-badge">${catLabel}</span>
+        </div>
+        <div class="product-badge-row" style="margin-top: -0.25rem; margin-bottom: 0.5rem;">
+          <span class="stock-badge ${p.stock_status || 'in_stock'}">${(p.stock_status || "in_stock") === "in_stock" ? "● In Stock" : "○ Out of Stock"}</span>
         </div>
         <h4 class="product-title">${p.title || p.name}</h4>
         <div class="product-price">₹${Number(p.price).toLocaleString("en-IN")}</div>
         <ul class="specs-list">
-          <li><strong>CPU:</strong> ${p.specs?.cpu || "N/A"}</li>
-          <li><strong>RAM / SSD:</strong> ${p.specs?.ram || "N/A"} • ${p.specs?.storage || "N/A"}</li>
-          <li><strong>Battery:</strong> ${p.specs?.battery || "unknown"}</li>
-          <li><strong>Warranty:</strong> ${p.specs?.warranty || "unknown"}</li>
+          ${formatProductSpecs(p)}
         </ul>
         <button class="btn btn-outline btn-sm btn-block" onclick="alert('Use the AI Agent Operator to discover, compare, and add this item.')">Inspect Specs</button>
       `;
@@ -103,10 +266,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderDefaultProducts() {
-    const sample = [
+    allProducts = [
       {
         provider_id: "provider_alpha",
         name: "Lenovo ThinkPad E14 Gen 5",
+        category: "laptops",
         price: 64990,
         stock_status: "in_stock",
         specs: { cpu: "Ryzen 7 7730U", ram: "16GB", storage: "512GB SSD", battery: "57Wh (9.5h)", warranty: "3-Year Premier Onsite" }
@@ -114,26 +278,62 @@ document.addEventListener("DOMContentLoaded", () => {
       {
         provider_id: "provider_beta",
         name: "ASUS Vivobook S 14 OLED",
+        category: "laptops",
         price: 68990,
         stock_status: "in_stock",
         specs: { cpu: "Core i5-13500H", ram: "16GB LPDDR5", storage: "512GB SSD", battery: "75Wh (10.5h)", warranty: "1-Year Warranty" }
       },
       {
         provider_id: "provider_alpha",
-        name: "Acer Swift Go 14",
-        price: 58990,
+        name: "Dell UltraSharp 27 4K USB-C Hub Monitor (U2723QE)",
+        category: "monitors",
+        price: 54990,
         stock_status: "in_stock",
-        specs: { cpu: "Core i5-1335U", ram: "16GB", storage: "512GB SSD", battery: "65Wh (8.5h)", warranty: "1-Year Warranty" }
+        specs: { screen_size: "27-inch", resolution: "4K UHD (3840 x 2160)", refresh_rate: "60Hz", panel_type: "IPS Black", color_gamut: "100% sRGB, 98% DCI-P3", stand: "Height/Pivot/Tilt", warranty: "3-Year Advanced Exchange" }
       },
       {
         provider_id: "provider_beta",
-        name: "Dell Latitude 3440 Enterprise",
-        price: 62490,
+        name: "Samsung Odyssey G5 27 QHD 165Hz Curved Gaming Monitor",
+        category: "monitors",
+        price: 21990,
         stock_status: "in_stock",
-        specs: { cpu: "Core i5-1335U", ram: "16GB", storage: "512GB SSD", battery: "54Wh (7.5h)", warranty: "unknown" }
+        specs: { screen_size: "27-inch Curved 1000R", resolution: "QHD (2560 x 1440)", refresh_rate: "165Hz (1ms MPRT)", panel_type: "VA Panel", color_gamut: "HDR10", ports: "HDMI 2.0, DisplayPort 1.2", warranty: "3-Year Warranty" }
+      },
+      {
+        provider_id: "provider_beta",
+        name: "Steelcase Series 1 Ergonomic Office Task Chair",
+        category: "furniture",
+        price: 38990,
+        stock_status: "in_stock",
+        specs: { material: "LiveBack 3D Micro Knit & High-Density Foam", ergonomics: "Height-adjustable lumbar, 4D adjustable armrests, weight-activated synchro tilt", weight_capacity: "181 kg (400 lbs)", warranty: "12-Year Multi-Shift Warranty" }
+      },
+      {
+        provider_id: "provider_alpha",
+        name: "Featherlite Helix High-Back Ergonomic Office Chair",
+        category: "furniture",
+        price: 18990,
+        stock_status: "in_stock",
+        specs: { material: "Breathable Korean Mesh & Aluminum Alloy", ergonomics: "Adjustable Lumbar Support, 3D Armrests, Multi-lock Synchro Tilt", weight_capacity: "135 kg", warranty: "3-Year Manufacturer Warranty" }
+      },
+      {
+        provider_id: "provider_alpha",
+        name: "AWS Cloud Compute Enterprise Tier Credits",
+        category: "cloud_services",
+        price: 34990,
+        stock_status: "in_stock",
+        specs: { tier: "Enterprise Cloud Compute Tier", vcpus: "32 vCPUs Allocated", ram: "128GB Cloud Memory Pool", uptime_sla: "99.99%", support: "24/7 Enterprise Dedicated Support", warranty: "Enterprise Cloud SLA" }
+      },
+      {
+        provider_id: "provider_beta",
+        name: "JetBrains All Products Pack Annual Developer Subscription",
+        category: "cloud_services",
+        price: 24990,
+        stock_status: "in_stock",
+        specs: { subscription: "Annual All Products Commercial License", ide_support: "IntelliJ IDEA, PyCharm, WebStorm, CLion, GoLand, Rider", uptime_sla: "100% Floating Cloud Licensing", support: "Standard Business Support", warranty: "Continuous Software Updates" }
       }
     ];
-    renderProducts(sample);
+    updateCategoryCounts();
+    renderFilteredProducts();
   }
 
   async function loadTools() {
@@ -184,7 +384,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       // Step 1: Planner
-      addTraceStep(1, "Planner Agent", "Interpreting goal & constraints...", "Extracted budget limit ₹70,000, priorities: coding, battery, reliability. Action requested: add best option to cart; checkout forbidden.", "completed");
+      const displayPrompt = prompt.length > 70 ? prompt.slice(0, 67) + "..." : prompt;
+      addTraceStep(1, "Planner Agent", "Interpreting goal & constraints...", `Parsing request: "${displayPrompt}". Normalizing budget, domain attributes, and safety boundary (no checkout).`, "completed");
       await delay(400);
 
       // Step 2: Discovery
@@ -192,7 +393,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await delay(400);
 
       // Step 3: Tool Router
-      addTraceStep(3, "Dynamic Tool Router", "Dispatching parallel catalogue discovery...", "Normalizing canonical query. Executing parallel search across Provider Alpha (TechMart) and Provider Beta (ElectroStore).", "completed");
+      addTraceStep(3, "Dynamic Tool Router", "Dispatching parallel catalogue discovery...", "Normalizing canonical query across domains. Executing parallel search across Provider Alpha (TechMart) and Provider Beta (ElectroStore).", "completed");
       
       // Call backend workflow API
       const res = await fetch("/api/tasks/run_workflow", {
@@ -209,7 +410,8 @@ document.addEventListener("DOMContentLoaded", () => {
       currentTask = workflowResult;
 
       // Step 4: Comparison
-      addTraceStep(4, "Comparison Agent", "Ranking candidates against multi-criteria constraints...", `Evaluated ${workflowResult.candidates.length} candidates under ₹70,000. Top recommendation: ${workflowResult.top_recommendation.title}.`, "completed");
+      const budgetNote = workflowResult.budget ? `under ₹${Number(workflowResult.budget).toLocaleString("en-IN")}` : "meeting all constraints";
+      addTraceStep(4, "Comparison Agent", "Ranking candidates against multi-criteria constraints...", `Evaluated ${workflowResult.candidates.length} candidates ${budgetNote}. Top recommendation: ${workflowResult.top_recommendation.title}.`, "completed");
       renderComparison(workflowResult.candidates, workflowResult.top_recommendation);
       await delay(400);
 
@@ -253,46 +455,87 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderComparison(candidates, topRec) {
     comparisonContainer.innerHTML = "";
+    if (!candidates || candidates.length === 0) {
+      comparisonContainer.innerHTML = "<p class='empty-state'>No candidate products to compare.</p>";
+      return;
+    }
+
+    // Determine domain of dominant candidate
+    const dominantCat = detectCategory(topRec || candidates[0]);
+    let specRows = [];
+
+    if (dominantCat === "monitors") {
+      specRows = [
+        { label: "Display & Resolution", get: c => `${c.specs?.screen_size || ""} ${c.specs?.resolution || "High-Res"}` },
+        { label: "Refresh Rate", get: c => c.specs?.refresh_rate || "60Hz" },
+        { label: "Panel & Color Gamut", get: c => `${c.specs?.panel_type || "IPS"} ${c.specs?.color_gamut ? "• " + c.specs.color_gamut : ""}` },
+        { label: "Ports / Ergonomics", get: c => `${c.specs?.ports || ""} ${c.specs?.stand ? "• " + c.specs.stand : ""}` },
+        { label: "Warranty & Support", get: c => c.specs?.warranty || "Standard" }
+      ];
+    } else if (dominantCat === "furniture") {
+      specRows = [
+        { label: "Material & Build", get: c => c.specs?.material || "Ergonomic Mesh" },
+        { label: "Ergonomics / Adjustability", get: c => c.specs?.ergonomics || "Adjustable Support" },
+        { label: "Weight Capacity", get: c => c.specs?.weight_capacity || "120+ kg" },
+        { label: "Warranty & Coverage", get: c => c.specs?.warranty || "Manufacturer Warranty" }
+      ];
+    } else if (dominantCat === "cloud_services") {
+      specRows = [
+        { label: "Tier / Edition", get: c => c.specs?.tier || c.specs?.subscription || "Enterprise" },
+        { label: "Allocated Resources", get: c => `${c.specs?.vcpus || ""} ${c.specs?.ram ? "• " + c.specs.ram : (c.specs?.ide_support || "")}` },
+        { label: "Uptime SLA", get: c => c.specs?.uptime_sla || "99.9%" },
+        { label: "Support Level", get: c => c.specs?.support || c.specs?.warranty || "24/7 Dedicated" }
+      ];
+    } else if (dominantCat === "laptops") {
+      specRows = [
+        { label: "CPU Performance", get: c => c.specs?.cpu || "N/A" },
+        { label: "RAM / Storage", get: c => `${c.specs?.ram || "N/A"} • ${c.specs?.storage || "N/A"}` },
+        { label: "Battery Life", get: c => c.specs?.battery || "N/A" },
+        { label: "Display", get: c => c.specs?.display || "N/A" },
+        { label: "Warranty & Support", get: c => c.specs?.warranty || "N/A" }
+      ];
+    } else {
+      // Dynamic union of candidate specs keys
+      const allKeys = new Set();
+      candidates.forEach(c => Object.keys(c.specs || {}).forEach(k => allKeys.add(k)));
+      const selectedKeys = Array.from(allKeys).slice(0, 5);
+      specRows = selectedKeys.map(k => ({
+        label: k.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
+        get: c => c.specs?.[k] || "N/A"
+      }));
+    }
+
     const table = document.createElement("table");
     table.className = "comparison-table";
     table.innerHTML = `
       <thead>
         <tr>
           <th>Attribute</th>
-          ${candidates.map(c => `<th>${c.title} ${c.sku === topRec.sku ? '<span class="badge badge-green">Recommended</span>' : ''}</th>`).join("")}
+          ${candidates.map(c => `<th>${c.title} ${topRec && c.sku === topRec.sku ? '<span class="badge badge-green">Recommended</span>' : ''}</th>`).join("")}
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td>Provider</td>
+          <td>Provider Source</td>
           ${candidates.map(c => `<td><span class="provider-pill ${c.provider_id === 'provider_alpha' ? 'pill-alpha' : 'pill-beta'}">${c.provenance}</span></td>`).join("")}
         </tr>
         <tr>
           <td>Price</td>
           ${candidates.map(c => `<td><strong>₹${Number(c.price).toLocaleString('en-IN')}</strong></td>`).join("")}
         </tr>
-        <tr>
-          <td>CPU Performance</td>
-          ${candidates.map(c => `<td>${c.specs?.cpu || 'N/A'}</td>`).join("")}
-        </tr>
-        <tr>
-          <td>RAM / Storage</td>
-          ${candidates.map(c => `<td>${c.specs?.ram || 'N/A'} • ${c.specs?.storage || 'N/A'}</td>`).join("")}
-        </tr>
-        <tr>
-          <td>Battery Life</td>
-          ${candidates.map(c => `<td>${c.specs?.battery || 'unknown'}</td>`).join("")}
-        </tr>
-        <tr>
-          <td>Warranty & Support</td>
-          ${candidates.map(c => `<td>${c.specs?.warranty || 'unknown'}</td>`).join("")}
-        </tr>
+        ${specRows.map(row => `
+          <tr>
+            <td>${row.label}</td>
+            ${candidates.map(c => `<td>${row.get(c) || "N/A"}</td>`).join("")}
+          </tr>
+        `).join("")}
       </tbody>
     `;
     comparisonContainer.appendChild(table);
 
     // Switch to comparison tab automatically
-    document.querySelector('.tab-btn[data-tab="comparison"]').click();
+    const compBtn = document.querySelector('.tab-btn[data-tab="comparison"]');
+    if (compBtn) compBtn.click();
   }
 
   function showApprovalModal(approvalReq, product) {
@@ -365,7 +608,8 @@ document.addEventListener("DOMContentLoaded", () => {
       updateCartDrawer(actionResult.cart_state);
       
       // Step 9: Final result
-      addTraceStep(9, "Dispatcher Agent", "Workflow Completed Safely", "Recommended laptop added to cart. Execution halted prior to checkout boundary as instructed.", "completed");
+      const itemTitle = currentTask?.top_recommendation?.title || "selected product";
+      addTraceStep(9, "Dispatcher Agent", "Workflow Completed Safely", `Recommended item ("${itemTitle}") added to cart. Execution halted prior to checkout boundary as instructed.`, "completed");
 
     } catch (e) {
       addTraceStep(8, "Action Error", "Failed to commit cart mutation", e.message, "failed");

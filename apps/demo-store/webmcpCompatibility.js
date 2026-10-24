@@ -47,7 +47,7 @@
   // Register Provider Alpha WebMCP Tools directly into the browser page context
   context.registerTool({
     name: "search_products",
-    description: "Search TechMart catalog for laptops by keyword query and max budget.",
+    description: "Search TechMart catalog for products across categories (laptops, monitors, office chairs, cloud services) by keyword query and max budget.",
     canonical_capability: "PRODUCT_SEARCH",
     inputSchema: {
       type: "object",

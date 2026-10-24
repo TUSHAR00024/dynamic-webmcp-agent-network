@@ -42,7 +42,19 @@
         <p class="helper-text">Enter your shopping goal in natural language. The system dynamically discovers website tools, normalizes schemas, routes across providers, and requests approval before mutating state.</p>
         
         <div class="prompt-box">
-          <textarea id="prompt-input" rows="4" placeholder="Enter your goal...">Find the best laptop under ₹70,000 for programming and college. Search multiple websites, compare at least three suitable options, explain the trade-offs, and add the best option to my cart. Do not check out.</textarea>
+          <label class="prompt-label" for="prompt-input">Goal & Procurement Prompt:</label>
+          <textarea id="prompt-input" rows="4" placeholder="Enter your shopping goal across any category (e.g., laptops, monitors, office chairs, cloud services)...">Find the best laptop under ₹70,000 for programming and college. Search multiple websites, compare at least three suitable options, explain the trade-offs, and add the best option to my cart. Do not check out.</textarea>
+          
+          <div class="prompt-chips-section">
+            <span class="chips-label">Domain Presets:</span>
+            <div class="prompt-chips-row">
+              <button type="button" class="prompt-chip active" data-domain="laptops" data-prompt="Find the best laptop under ₹70,000 for programming and college. Search multiple websites, compare at least three suitable options, explain the trade-offs, and add the best option to my cart. Do not check out.">💻 Laptop</button>
+              <button type="button" class="prompt-chip" data-domain="furniture" data-prompt="Find the best ergonomic office chair under ₹40,000 with lumbar support and 3D armrests. Search multiple websites, compare options, explain the trade-offs, and add the best option to my cart. Do not check out.">🪑 Office Chair</button>
+              <button type="button" class="prompt-chip" data-domain="monitors" data-prompt="Find high-resolution 4K or 165Hz monitors under ₹60,000 suitable for programming and design work. Compare options across websites and add the best option to my cart. Do not check out.">🖥️ 4K / 165Hz Monitor</button>
+              <button type="button" class="prompt-chip" data-domain="cloud_services" data-prompt="Find enterprise cloud compute credits or software subscriptions under ₹35,000 for developer workloads. Compare options and add the best option to my cart. Do not check out.">☁️ Cloud & Software</button>
+            </div>
+          </div>
+
           <div class="prompt-actions">
             <button class="btn btn-primary" id="btn-run-agent">Execute Multi-Agent Workflow</button>
             <button class="btn btn-outline" id="btn-sample-prompt">Reset Prompt</button>
@@ -85,6 +97,13 @@
         <div class="provider-banner">
           <span class="provider-pill pill-alpha">Provider Alpha: TechMart Online (WebMCP)</span>
           <span class="provider-pill pill-beta">Provider Beta: ElectroStore Pro (Remote MCP)</span>
+        </div>
+        <div class="category-filter-bar" id="category-filter-bar">
+          <button type="button" class="category-pill active" data-category="all">All Products (<span id="count-all">0</span>)</button>
+          <button type="button" class="category-pill" data-category="laptops">💻 Laptops (<span id="count-laptops">0</span>)</button>
+          <button type="button" class="category-pill" data-category="monitors">🖥️ Monitors (<span id="count-monitors">0</span>)</button>
+          <button type="button" class="category-pill" data-category="furniture">🪑 Office Chairs (<span id="count-furniture">0</span>)</button>
+          <button type="button" class="category-pill" data-category="cloud_services">☁️ Cloud & Software (<span id="count-cloud">0</span>)</button>
         </div>
         <div class="products-grid" id="products-grid">
           <!-- Dynamic Products injected here -->
