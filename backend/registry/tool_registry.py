@@ -67,6 +67,18 @@ class ToolRegistry:
                     return tool
         return None
 
+    def find_tools(
+        self,
+        capability: str,
+        provider_id: Optional[str] = None,
+        active_only: bool = True
+    ) -> List[ToolDefinition]:
+        """Convenience query for tools by capability and optional provider filter."""
+        matches = self.find_tools_by_capability(capability, active_only=active_only)
+        if provider_id:
+            matches = [t for t in matches if t.provider_id == provider_id]
+        return matches
+
     def list_all_tools(self) -> List[ToolDefinition]:
         return list(self._tools.values())
 

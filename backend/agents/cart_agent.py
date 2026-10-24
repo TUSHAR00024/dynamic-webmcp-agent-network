@@ -6,6 +6,7 @@ from backend.protocols.messages import (
     ActionVerificationResultMessage
 )
 from backend.registry.capability_map import CanonicalCapability
+from backend.registry.schema_normalizer import SchemaNormalizer
 from backend.routing.tool_router import tool_router
 
 
@@ -34,11 +35,12 @@ class CartActionAgent:
         )
 
         cart_payload = cart_res.payload if cart_res.status == "SUCCESS" else {}
-        items = cart_payload.get("items", [])
+        canonical_cart = SchemaNormalizer.normalize_cart_state(msg.provider_id, cart_payload)
+        items = canonical_cart.items
 
         # Confirm target item is present in read-back state
-        target_pid = msg.arguments.get("product_id")
-        verified_item = any(i.get("product_id") == target_pid or i.get("sku") == target_pid for i in items)
+        target_pid = msg.arguments.get("product_id") or msg.arguments.get("item_sku") or msg.arguments.get("sku")
+        verified_item = any(i.product_id == target_pid or i.sku == target_pid for i in items)
 
         if verified_item:
             details = (
@@ -59,7 +61,7 @@ class CartActionAgent:
             status="VERIFIED" if verified_item else "UNVERIFIED",
             verified_postcondition=verified_item,
             verification_details=details,
-            cart_state=cart_payload
+            cart_state=canonical_cart.to_dict()
         )
 
 

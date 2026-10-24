@@ -18,6 +18,8 @@ from backend.protocols.messages import (
     ResearchQueryMessage
 )
 from backend.registry.capability_map import CanonicalCapability
+from backend.registry.tool_registry import tool_registry
+from backend.routing.candidate_scorer import score_candidate
 from backend.routing.tool_router import tool_router
 from backend.safety.idempotency import idempotency_guard
 
@@ -72,40 +74,13 @@ class WorkflowService:
                 "routing_rationale": msg
             }
 
-        # 4. Multi-Attribute Candidate Scoring
+        # 4. Multi-Attribute Candidate Scoring with Normalized Features and Dynamic Priority Weights
         ranked_candidates = []
         for p in products:
-            score = 65.0
-            specs = p.specs
-
-            # CPU / Coding priority
-            cpu_lower = str(specs.cpu).lower()
-            if any(k in cpu_lower for k in ["ryzen 7", "i5-13500h", "12 cores", "8 cores", "m2"]):
-                score += 15.0
-            elif "i5" in cpu_lower or "ryzen 5" in cpu_lower:
-                score += 10.0
-
-            # Battery priority
-            bat_lower = str(specs.battery).lower()
-            if "75wh" in bat_lower or "10.5" in bat_lower or "15 hours" in bat_lower:
-                score += 10.0
-            elif "57wh" in bat_lower or "9.5" in bat_lower or "65wh" in bat_lower:
-                score += 8.0
-            elif "unknown" in bat_lower:
-                score -= 5.0  # Transparent penalty for uncertainty
-
-            # RAM & Storage priority
-            ram_lower = str(specs.ram).lower()
-            if "16gb" in ram_lower or "unified" in ram_lower:
-                score += 5.0
-
-            # Warranty / Reliability priority
-            if "3-year" in str(specs.warranty).lower():
-                score += 5.0
-
+            score = score_candidate(p, budget=plan.max_budget, priorities=plan.priorities)
             ranked_candidates.append({
                 "product": p,
-                "composite_score": round(score, 1)
+                "composite_score": score
             })
 
         ranked_candidates.sort(key=lambda x: x["composite_score"], reverse=True)
@@ -121,7 +96,10 @@ class WorkflowService:
         # 6. Policy Approval Gate (if cart action requested)
         approval_msg = None
         if plan.target_action == "add_to_cart":
-            target_tool = "add_to_cart" if top_rec.provider_id == "provider_alpha" else "cart_add"
+            cart_tools = tool_registry.find_tools(CanonicalCapability.CART_ADD, provider_id=top_rec.provider_id)
+            if not cart_tools:
+                raise ValueError(f"No CART_ADD tool registered for provider '{top_rec.provider_id}'.")
+            target_tool = cart_tools[0].tool_name
             approval_msg = policy_agent.issue_approval_request(
                 task_id=task_id,
                 provider_id=top_rec.provider_id,

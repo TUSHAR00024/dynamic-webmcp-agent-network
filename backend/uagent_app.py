@@ -1,4 +1,5 @@
 """Real Fetch.ai Orchestrator uAgent with Agent Chat Protocol (ACP)."""
+import asyncio
 import json
 import os
 import re
@@ -160,7 +161,8 @@ async def handle_chat_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
 
 async def _execute_approval(ctx: Context, sender: str, approval_id: str) -> ChatMessage:
     try:
-        result = workflow_service.execute_approved_action(
+        result = await asyncio.to_thread(
+            workflow_service.execute_approved_action,
             approval_id=approval_id,
             sender_address=sender
         )
@@ -181,7 +183,11 @@ async def _execute_approval(ctx: Context, sender: str, approval_id: str) -> Chat
 
 async def _cancel_approval(ctx: Context, sender: str, approval_id: str) -> ChatMessage:
     try:
-        res = workflow_service.cancel_approval(approval_id=approval_id, sender_address=sender)
+        res = await asyncio.to_thread(
+            workflow_service.cancel_approval,
+            approval_id=approval_id,
+            sender_address=sender
+        )
         return make_chat_msg(f"🚫 **Action Cancelled:** {res['message']}")
     except Exception as e:
         return make_chat_msg(f"⚠️ Could not cancel approval: {str(e)}")
@@ -233,11 +239,24 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
             return await _cancel_approval(ctx, sender, approval_id)
 
     # 4. General Shopping Goal Request
-    task_res = workflow_service.run_search_and_compare(
-        prompt=text,
-        session_id=f"asi1_{sender[-8:] if len(sender) >= 8 else sender}",
-        sender_address=sender
-    )
+    # Send interim progress message so user and client know search is active
+    try:
+        await ctx.send(sender, make_chat_msg("🔎 Searching active providers and comparing candidate specifications..."))
+    except Exception:
+        pass
+
+    try:
+        task_res = await asyncio.wait_for(
+            asyncio.to_thread(
+                workflow_service.run_search_and_compare,
+                prompt=text,
+                session_id=f"asi1_{sender[-8:] if len(sender) >= 8 else sender}",
+                sender_address=sender
+            ),
+            timeout=45.0
+        )
+    except asyncio.TimeoutError:
+        return make_chat_msg("⏱️ The search operation timed out while querying remote providers. Please try asking with a narrower query or specific brand.")
 
     if task_res.get("status") == "NO_RESULTS":
         return make_chat_msg(f"🔍 {task_res['message']}")
