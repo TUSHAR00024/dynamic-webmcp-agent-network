@@ -23,6 +23,11 @@ from uagents_core.contrib.protocols.chat import (
     chat_protocol_spec
 )
 
+from backend.cards import (
+    build_approval_review_card,
+    build_product_carousel_card,
+    create_card_metadata
+)
 from backend.protocols.acp_integration import ACPIntegrationService
 from backend.services.workflow_service import workflow_service
 
@@ -60,12 +65,12 @@ MAX_SEEN = 1000
 def make_chat_msg(
     text: str,
     end_session: bool = False,
-    metadata_card: Optional[Dict[str, Any]] = None
+    metadata_card: Optional[MetadataContent] = None
 ) -> ChatMessage:
     """Helper to build ACP-compliant ChatMessage."""
     content: list[Any] = [TextContent(type="text", text=text)]
     if metadata_card:
-        content.append(MetadataContent(type="metadata", metadata=metadata_card))
+        content.append(metadata_card)
     if end_session:
         content.append(EndSessionContent(type="end-session"))
     return ChatMessage(
@@ -226,17 +231,13 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
         )
 
     # Attach interactive card metadata for ASI:One
-    card_metadata = None
+    card_metadata: Optional[MetadataContent] = None
     if approval and top:
-        card_metadata = {
-            "type": "review_card",
-            "title": "Authorize Cart Addition",
-            "provider": approval["provider_id"],
-            "product_title": top.get("title"),
-            "price": f"₹{approval['bound_price']:,.2f}",
-            "approval_id": approval["approval_id"],
-            "expires_in": "300s"
-        }
+        review_card = build_approval_review_card(approval, top)
+        card_metadata = create_card_metadata(review_card)
+    elif candidates:
+        carousel_card = build_product_carousel_card(candidates, top)
+        card_metadata = create_card_metadata(carousel_card)
 
     return make_chat_msg(response_text, end_session=False, metadata_card=card_metadata)
 

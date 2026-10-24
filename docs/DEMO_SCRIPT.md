@@ -1,57 +1,100 @@
-# Dynamic WebMCP Agent Network — 2-Minute Demonstration Script
+# Dynamic WebMCP Agent Network — 3-to-5 Minute Demonstration Script
 
-**Tagline:** "From brittle screen clicks to structured, dynamic tool networks."
-
----
-
-### 0:00 – 0:18: Problem Statement & Vision
-*"Conventional web AI agents rely on brittle computer-use approaches: taking screenshots, guessing CSS selectors, and clicking coordinates. When website layouts change, these agents break.*
-
-*We built the **Dynamic WebMCP Agent Network** for Fetch-A-Thon 3.0. Instead of clicking pixels, our multi-agent system dynamically discovers structured website tools through WebMCP and Remote MCP, normalizes their schemas at runtime, routes requests across disparate providers, and enforces human-in-the-loop authorization."*
+**Tagline:** "From brittle screen clicks and DOM scrapers to structured, dynamic tool networks."  
+**Event:** Fetch-A-Thon 3.0 by Fetch.ai Innovation Lab  
 
 ---
 
-### 0:18 – 0:45: Dynamic Discovery & Heterogeneous Providers
-*(Screen shows Demo Store at `http://localhost:8000`)*
+### [0:00 – 0:45] Introduction & The Architectural Paradigm Shift
+*(Visual: Slide or title screen showing Architecture Diagram and Innovation Lab badges)*
 
-*"Look at our live store. We have two distinct providers:
-- **Provider Alpha (TechMart)** exposes WebMCP tools directly in the browser page: `search_products(query, max_price)` and `add_to_cart(session_id, product_id, quantity)`.
-- **Provider Beta (ElectroStore Pro)** exposes Remote MCP tools with completely different schemas: `find_items(keywords, budget)` and `cart_add(session_id, item_sku, count)`.
-
-Our Planner and Discovery agents do not have hardcoded tool names. They map these into canonical capabilities: `PRODUCT_SEARCH` and `CART_ADD`."*
-
----
-
-### 0:45 – 1:15: Parallel Routing & Grounded Comparison
-*(Screen shows prompt entered and Execution Trace running)*
-
-*"We enter our user's goal:
-> 'Find the best laptop under ₹70,000 for programming and college. Search multiple websites, compare at least three options, explain trade-offs, and add the best option to my cart. Do not check out.'
-
-Watch the **Dynamic Tool Router** in action:
-1. It queries both providers simultaneously via parallel thread dispatch.
-2. The Schema Normalizer transforms the canonical query into Alpha's and Beta's unique parameters.
-3. The Comparison Agent ranks candidates against multi-criteria constraints (coding CPU, battery, reliability).
-4. Lenovo ThinkPad E14 is selected with a composite score of 93/100, and ASUS Vivobook OLED is compared side-by-side with full spec provenance."*
+**Presenter:**
+> "Hello judges and builders! Traditional browser automation agents rely on computer-use: taking screenshots, guessing brittle CSS selectors, and clicking coordinates. When a website redesigns its layout or changes its DOM classes, the agent breaks.
+>
+> We built **Dynamic WebMCP Agent Network** to solve this permanently. 
+>
+> Instead of scraping HTML, our system communicates directly with structured website tools exposed through **WebMCP** (`window.modelContext`) and **Remote MCP** servers. 
+>
+> But we went further: real websites use completely different tool names and schemas. Our system introduces a **Canonical Capability Layer** that dynamically discovers, translates, and routes requests across heterogeneous providers at runtime, complete with multi-factor scoring, automatic failover, and strict cryptographic human-in-the-loop approval gates.
+>
+> Best of all: it is a real Fetch.ai uAgent integrated with the **Agent Chat Protocol (ACP v0.3.0)**, allowing users to interact directly through **ASI:One** without needing to open a browser."
 
 ---
 
-### 1:15 – 1:40: Human Approval Gate & Postcondition Verification
-*(Screen shows Approval Modal popping up with cryptographic hash)*
+### [0:45 – 2:15] Primary Workflow: Conversational ASI:One Chat & Interactive Cards
+*(Visual: ASI:One chat window or running `make e2e` simulation)*
 
-*"Because adding an item to a cart is a state-changing action, our **Policy Agent** intercepts execution. It issues a short-lived approval token cryptographically bound to the exact product, price (₹64,990), and provider.
-
-We click **Authorize & Execute**.
-The Action Agent invokes Alpha's `add_to_cart` tool.
-Crucially, our system doesn't just trust an HTTP 200 code—it immediately executes an independent `CART_READ` postcondition query to verify that the cart state in the database actually holds the item.
-
-And notice: **the checkout boundary is strictly enforced**. The system halts before order submission or payment, exactly as instructed."*
+**Presenter:**
+> "Let's demonstrate our primary interface inside an ASI:One chat conversation.
+>
+> We open a chat with `@dynamic_webmcp_operator` and provide our real-world shopping goal:
+>
+> *'Find the best laptop under ₹70,000 for programming and college. Search multiple websites, compare at least three suitable options, explain the trade-offs, and add the best option to my cart. Do not check out.'*
+>
+> Notice what happens behind the scenes:
+> 1. Our **Planner Agent** leverages the **ASI1 LLM Reasoner** (`api.asi1.ai`) to extract structured constraints: category is laptops, budget ceiling is ₹70,000, and primary priorities are coding performance and battery longevity.
+> 2. The **Dynamic Tool Router** identifies two active providers offering the `PRODUCT_SEARCH` capability:
+>    - **Provider Alpha (TechMart Online)**: exposing `search_products(query, max_price)` via WebMCP.
+>    - **Provider Beta (ElectroStore Pro)**: exposing `find_items(keywords, budget)` via Remote MCP.
+> 3. The **Schema Normalizer** translates the single query into each retailer's native input schema and queries both in parallel.
+> 4. The **Comparison Agent** compiles the results and returns an informative Markdown Decision Matrix along with an **Agent-Driven Interactive Card**.
+>
+> Look at the clear trade-off rationale: Lenovo ThinkPad E14 Gen 5 is ranked as our top recommendation due to its 8-core AMD Ryzen 7 processor and long battery life, outranking the ASUS Vivobook and HP Pavilion for our coding criteria.
+>
+> Now observe the **Policy Approval Gate**:
+> Adding an item to a shopping cart is a state-changing action. Our system strictly refuses to execute without human authorization. It issues a short-lived approval token (`appr_xxxx`) bound to the exact SKU, price (₹62,990), and provider.
+>
+> In ASI:One, we can click the primary button on the **Review Card**, or simply reply:
+> `APPROVE appr_xxxx`
+>
+> The agent validates that the token hasn't expired, performs an authoritative **zero-tolerance price drift re-check** against the live store, invokes the cart addition tool, and immediately executes an independent `CART_READ` query to verify that the cart state in the database actually holds the item.
+>
+> Finally, notice the **Checkout Boundary Safeguard**: the agent confirms item placement and immediately halts. It will never submit payment or complete checkout autonomously."
 
 ---
 
-### 1:40 – 2:00: Automatic Failover & Conclusion
-*(Screen shows Provider Gamma fallback test and Agentverse manifest)*
+### [2:15 – 3:15] Companion WebMCP Store & Live Tool Discovery
+*(Visual: Browser showing `http://localhost:8000`)*
 
-*"To guarantee reliability, when a provider fails—like Provider Gamma throwing a simulated 503 error—our router detects the failure and instantly re-routes to the next best provider without user interruption.
+**Presenter:**
+> "To demonstrate how website tools are discovered on the client side, we built a companion demo web store.
+>
+> In the **⚡ Live WebMCP Registry** tab, you can inspect the tools registered directly onto `window.modelContext` by the retailer page.
+>
+> When an agent wants to interact with a WebMCP-enabled tab, calls are tunneled through our secure **Browser Bridge**.
+>
+> Security is non-negotiable: our bridge enforces an **Exact Hostname Allowlist**. If an attacker attempts domain spoofing using `evil-localhost.com:8000`, the connection is immediately rejected.
+>
+> And in the **Execution Trace** tab, you can observe every agent action logged in real-time with correlation IDs and execution timestamps."
 
-Integrated with Fetch.ai's Agent Chat Protocol (ACP) and discoverable via ASI:One, the Dynamic WebMCP Agent Network turns the web into an open, structured API for autonomous agents."*
+---
+
+### [3:15 – 4:00] Automatic Failover & Bonus Multi-Agent Bureau
+*(Visual: Running `make test` or displaying `backend/bureau_network.py`)*
+
+**Presenter:**
+> "In real-world networks, providers fail. How does our network handle it?
+>
+> We introduced **Provider Gamma (FaultyStore)**, which simulates a 503 Service Unavailable error.
+>
+> When the router attempts to query Gamma, the **Fallback Manager** intercepts the failure, logs the incident to the audit trail, and instantly fails over to Provider Alpha without aborting the user's task.
+>
+> Furthermore, for bonus multi-agent collaboration, we architected a native **Fetch.ai Bureau Network** in `backend/bureau_network.py`.
+>
+> Here, five specialist agents—Research Specialist, Comparison Specialist, Policy Specialist, Cart Specialist, and Network Supervisor—run as distinct `uagents.Agent` instances inside a `uagents.Bureau`, exchanging strongly typed Pydantic `Model` messages across their unique cryptographic Bech32 addresses."
+
+---
+
+### [4:00 – 4:30] Summary & Submission Verification
+*(Visual: Terminal running `make test` and `make verify`)*
+
+**Presenter:**
+> "To summarize:
+> - **25 automated unit and regression tests** pass in under 0.02 seconds (`make test`).
+> - A 4-turn **end-to-end conversation simulation** tests the full ACP lifecycle (`make e2e`).
+> - Powered by real Fetch.ai `uagents` (v0.26.1) and Agent Chat Protocol v0.3.0.
+> - Discoverable on Agentverse and operable in ASI:One with Interactive Cards.
+>
+> The Dynamic WebMCP Agent Network transforms the web from a collection of fragile HTML pages into a reliable, structured, permission-aware tool network for autonomous AI agents.
+>
+> Thank you!"

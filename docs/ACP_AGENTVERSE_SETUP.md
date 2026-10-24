@@ -1,53 +1,124 @@
 # Agentverse & ASI:One Integration Setup Guide
 
-## 1. Overview
-The **Dynamic WebMCP Agent Network** exposes an ACP (Agent Chat Protocol) compliant endpoint that interfaces with **ASI:One** and can be registered on **Agentverse**.
+This guide walks you through registering and deploying **Dynamic WebMCP Agent Operator** on Fetch.ai's **Agentverse** via a Mailbox connection, making it discoverable and interactive inside **ASI:One**.
 
 ---
 
-## 2. Agent Chat Protocol (ACP) Specifications
-The agent implements ACP v0.3.0 as defined by `uagents_core.contrib.protocols.chat`:
-- **Protocol Name**: `AgentChatProtocol`
-- **Protocol Version**: `0.3.0`
-- **Digest**: `proto:agent_chat_protocol_v0_3_0_webpilot`
-- **Primary Message Models**:
-  - `ChatMessage`: Wraps user prompt or agent reply blocks with unique `msg_id` and UTC `timestamp`.
-  - `TextContent`: Standard conversational text payload (`type: "text"`, `text: str`).
-  - `ResourceContent`: Structured metadata payload (`type: "resource"`, `uri: str`, `metadata: dict`).
-  - `ChatAcknowledgement`: Delivery confirmation returned for incoming messages.
+## 1. Prerequisites
+
+- Python 3.10+ with active virtual environment (`.venv`)
+- An account on [Agentverse](https://agentverse.ai)
+- (Optional) An API key for ASI1 LLM from [ASI:One Developer Portal](https://asi1.ai)
 
 ---
 
-## 3. Registering the Agent on Agentverse
+## 2. Step-by-Step Setup
 
-Follow these steps to register the agent on the Fetch.ai Agentverse platform:
+### Step 1: Generate a Cryptographic 24-Word Seed Phrase
+Run the included seed generation utility to create a fresh, unique seed phrase:
+```bash
+python scripts/gen_seed.py
+```
+*Example output:*
+```text
+=============================================================
+   Fetch.ai Cryptographic Seed Phrase Generator              
+=============================================================
+Generated 24-word seed phrase:
+  venture gravity galaxy shield matrix quantum orbit pulse dynamic ...
+=============================================================
+```
 
-1. **Log in to Agentverse**:
-   - Navigate to [https://agentverse.ai](https://agentverse.ai) and sign in.
-2. **Create a Managed Agent or Mailbox**:
-   - For locally hosted agents: Select **Local Agents** -> **Set up Mailbox**.
-   - Copy your `AGENTVERSE_API_KEY` and mailbox URL.
-3. **Configure Environment Variables**:
-   In your `.env` file:
-   ```bash
-   USE_AGENTVERSE=true
-   AGENTVERSE_API_KEY=your_agentverse_key_here
-   AGENTVERSE_MAILBOX_URL=https://agentverse.ai/v1/mailbox
-   DISPATCHER_SEED=your-secret-unique-seed-phrase
-   ```
-4. **Publish Manifest to Agentverse Explorer**:
-   The manifest generated in `backend/protocols/agentverse_config.py` can be submitted to make the agent discoverable on ASI:One:
-   ```json
-   {
-     "name": "dynamic_webmcp_operator",
-     "display_name": "Dynamic WebMCP Agent Operator",
-     "version": "1.0.0",
-     "description": "Autonomous multi-agent web operator with dynamic runtime WebMCP & Remote MCP tool discovery, cross-provider routing, and human-in-the-loop approval.",
-     "protocol": "AgentChatProtocol v0.3.0",
-     "tags": ["web-operator", "webmcp", "mcp", "shopping", "dynamic-routing", "asi-one"]
-   }
-   ```
-5. **Verify Discovery on ASI:One**:
-   - Open ASI:One (`https://asi1.ai`).
-   - Query `@dynamic_webmcp_operator Find the best laptop under ₹70,000 for college and coding`.
-   - The Dispatcher agent handles the request, initiates parallel research across providers, and streams status updates and approval cards.
+> **Security Rule:** Never commit this seed phrase to git. Keep it strictly inside your local `.env` file.
+
+---
+
+### Step 2: Derive Your Agent Address
+Create a `.env` file from the example template:
+```bash
+cp .env.example .env
+```
+Paste your generated seed into `.env`:
+```bash
+AGENT_SEED_PHRASE="venture gravity galaxy shield matrix quantum orbit pulse dynamic ..."
+USE_AGENTVERSE=false
+```
+Now inspect your agent's Bech32 cryptographic address by running the agent verification:
+```bash
+make agent
+```
+*Example output:*
+```text
+=================================================================
+  Starting Fetch.ai uAgent: dynamic_webmcp_operator
+  Agent Address: agent1qtkj0wh7y0gz264jrya2y75pndf7k3apd9eagh3gnvuejgu6p8dqcq2pdvn
+=================================================================
+```
+Copy your **Agent Address** (starts with `agent1...`). Press `Ctrl+C` to stop the local process.
+
+---
+
+### Step 3: Register Mailbox on Agentverse
+1. Go to [https://agentverse.ai](https://agentverse.ai) and sign in.
+2. In the navigation sidebar, navigate to **Local Agents** -> **Set up Mailbox** (or click **New Agent** -> **Connect Local Agent**).
+3. In the setup modal:
+   - Provide a Name: `dynamic_webmcp_operator`
+   - Paste your **Agent Address** from Step 2 (`agent1...`).
+4. Click **Create Mailbox**.
+5. Agentverse will display your generated **Mailbox Key** (or mailbox authorization token).
+   - Copy this key.
+
+---
+
+### Step 4: Configure `.env` for Agentverse Mailbox
+Edit your `.env` file with the mailbox credentials:
+```bash
+AGENT_NAME="dynamic_webmcp_operator"
+AGENT_PORT=8001
+AGENT_SEED_PHRASE="venture gravity galaxy shield matrix quantum orbit pulse dynamic ..."
+
+# Enable Agentverse Mailbox
+USE_AGENTVERSE=true
+AGENTVERSE_MAILBOX_KEY="your-mailbox-key-from-agentverse"
+
+# Optional: ASI1 LLM Key for enhanced conversational reasoning
+ASI1_API_KEY="your-asi1-api-key"
+```
+
+---
+
+### Step 5: Start the Agent
+Launch the agent:
+```bash
+make agent
+```
+The agent connects to the Agentverse Mailbox and registers its `AgentChatProtocol` (ACP v0.3.0) manifest. It is now listening for incoming messages sent from ASI:One!
+
+---
+
+## 3. Conversational Testing in ASI:One
+
+1. Open [ASI:One](https://asi1.ai) in your browser.
+2. Start a new chat session and query your agent using its name or address:
+   > `@dynamic_webmcp_operator Find the best laptop under ₹70,000 for programming and college. Compare options and add the best to my cart. Do not check out.`
+3. **Product Search & Matrix**:
+   - The agent extracts constraints using the ASI1 LLM reasoner.
+   - It queries active WebMCP and Remote MCP providers concurrently.
+   - It outputs a Markdown comparison table along with a structured **Interactive Carousel Card**.
+   - It halts before adding to cart and issues an HMAC-bound approval token:
+     `APPROVE appr_xxxx`
+4. **Interactive Card or Text Approval**:
+   - In ASI:One clients that support interactive cards, click the **Approve** button on the rendered **Review Card**.
+   - Alternatively, reply directly in chat:
+     `APPROVE appr_xxxx`
+5. **Execution & Postcondition Verification**:
+   - The agent checks for price drift, executes the cart addition tool, and independently verifies the item exists in the cart via `CART_READ`.
+   - The agent replies with the verified state confirmation and reaffirms that the checkout boundary is preserved.
+
+---
+
+## 4. ASI:One Card Playground
+
+To inspect and test the interactive card schemas independently of running agents:
+1. Navigate to [ASI:One Card Playground](https://asi1.ai/developer/card-playground).
+2. The card payloads generated by `backend/cards.py` (`review_card` and `carousel_card`) can be loaded and visually previewed to ensure element-tree depths (<8 levels) and payloads (<60 KB) render smoothly in mobile and desktop layouts.
