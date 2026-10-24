@@ -40,10 +40,16 @@ class CartActionAgent:
         target_pid = msg.arguments.get("product_id")
         verified_item = any(i.get("product_id") == target_pid or i.get("sku") == target_pid for i in items)
 
-        details = (
-            f"Successfully added {msg.arguments.get('quantity', 1)} unit(s) of '{target_pid}' to {msg.provider_id}'s cart. "
-            f"Independent CART_READ query confirmed state reflects {len(items)} line item(s)."
-        )
+        if verified_item:
+            details = (
+                f"Successfully added {msg.arguments.get('quantity', 1)} unit(s) of '{target_pid}' to {msg.provider_id}'s cart. "
+                f"Independent CART_READ query confirmed state reflects {len(items)} line item(s)."
+            )
+        else:
+            details = (
+                f"Postcondition verification failed: '{target_pid}' was not found in provider {msg.provider_id}'s cart after CART_ADD. "
+                f"Cart state reflects {len(items)} line item(s)."
+            )
 
         return ActionVerificationResultMessage(
             action_id=res.action_id,

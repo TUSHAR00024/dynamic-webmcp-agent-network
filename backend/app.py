@@ -7,6 +7,10 @@ import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+from dotenv import load_dotenv
+
+# Load environment variables at startup
+load_dotenv()
 
 # Set up project path
 BASE_DIR = Path(__file__).resolve().parents[1]

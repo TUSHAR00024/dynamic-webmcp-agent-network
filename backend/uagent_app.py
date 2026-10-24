@@ -1,5 +1,7 @@
-"""Real Fetch.ai Orchestrator uAgent with Agent Chat Protocol (ACP v0.3.0)."""
+"""Real Fetch.ai Orchestrator uAgent with Agent Chat Protocol (ACP)."""
+import json
 import os
+import re
 import sys
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -7,11 +9,14 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+# Load environment variables FIRST before importing any backend modules
+from dotenv import load_dotenv
+load_dotenv()
+
 # Ensure project root in sys.path
 BASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE_DIR))
 
-from dotenv import load_dotenv
 from uagents import Agent, Context, Protocol
 from uagents_core.contrib.protocols.chat import (
     ChatAcknowledgement,
@@ -24,26 +29,40 @@ from uagents_core.contrib.protocols.chat import (
 )
 
 from backend.cards import (
-    build_approval_review_card,
-    build_product_carousel_card,
-    create_card_metadata
+    create_carousel_metadata,
+    create_review_metadata
 )
 from backend.protocols.acp_integration import ACPIntegrationService
 from backend.services.workflow_service import workflow_service
 
-load_dotenv()
-
 # Read configuration from environment
 AGENT_NAME = os.getenv("AGENT_NAME", "dynamic_webmcp_operator")
 AGENT_PORT = int(os.getenv("AGENT_PORT", "8001"))
-AGENT_SEED = os.getenv("AGENT_SEED_PHRASE", "")
-USE_MAILBOX = os.getenv("USE_AGENTVERSE", "true").lower() in ("true", "1", "yes")
+AGENT_SEED = os.getenv("AGENT_SEED_PHRASE", "").strip()
+USE_MAILBOX = os.getenv("USE_AGENTVERSE", "false").lower() in ("true", "1", "yes")
+
+
+def validate_agent_config() -> bool:
+    """Verify that agent has persistent seed when mailbox mode is enabled."""
+    seed = os.getenv("AGENT_SEED_PHRASE", "").strip()
+    mailbox_enabled = os.getenv("USE_AGENTVERSE", "false").lower() in ("true", "1", "yes")
+    if mailbox_enabled and not seed:
+        print("\n" + "=" * 70)
+        print("❌ ERROR: AGENT_SEED_PHRASE is not set in your .env file!")
+        print("When USE_AGENTVERSE=true (mailbox mode), an ephemeral seed would regenerate")
+        print("a new agent address on every run, breaking your Agentverse Mailbox registration.")
+        print("\n👉 Fix: Run `python scripts/gen_seed.py`, copy the 24 words, and set:")
+        print('   AGENT_SEED_PHRASE="your 24 words here"')
+        print("=" * 70 + "\n")
+        return False
+    return True
+
 
 if not AGENT_SEED:
-    # Generate ephemeral fallback if not provided in environment for testing
     import secrets
     AGENT_SEED = f"ephemeral-seed-{secrets.token_hex(16)}"
-    print("[WARNING] AGENT_SEED_PHRASE not set in .env. Generated temporary local seed.")
+    if not USE_MAILBOX:
+        print("[WARNING] AGENT_SEED_PHRASE not set in .env. Generated temporary local seed for offline test mode.")
 
 # Initialize the official Fetch.ai uAgent
 agent = Agent(
@@ -139,51 +158,81 @@ async def handle_chat_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
     ctx.logger.info(f"Delivery acknowledgement confirmed from {sender} for {msg.acknowledged_msg_id}")
 
 
+async def _execute_approval(ctx: Context, sender: str, approval_id: str) -> ChatMessage:
+    try:
+        result = workflow_service.execute_approved_action(
+            approval_id=approval_id,
+            sender_address=sender
+        )
+        cart_items = result.get("cart_state", {}).get("items", [])
+        items_summary = f"{len(cart_items)} item(s) present" if cart_items else "Item verified"
+        reply_text = (
+            f"✅ **Action Authorized and Verified!**\n\n"
+            f"• **Target Provider:** `{result['provider_id']}`\n"
+            f"• **Tool Invoked:** `{result['tool_name']}`\n"
+            f"• **Postcondition:** {result['verification_details']}\n"
+            f"• **Verified Cart State:** {items_summary}\n\n"
+            f"🛡️ *Checkout Boundary Safeguard:* Execution halted prior to checkout or payment."
+        )
+        return make_chat_msg(reply_text, end_session=False)
+    except Exception as e:
+        return make_chat_msg(f"❌ **Approval Execution Blocked:** {str(e)}")
+
+
+async def _cancel_approval(ctx: Context, sender: str, approval_id: str) -> ChatMessage:
+    try:
+        res = workflow_service.cancel_approval(approval_id=approval_id, sender_address=sender)
+        return make_chat_msg(f"🚫 **Action Cancelled:** {res['message']}")
+    except Exception as e:
+        return make_chat_msg(f"⚠️ Could not cancel approval: {str(e)}")
+
+
 async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage:
-    """Process natural language user requests and approval commands."""
-    upper_text = text.upper()
+    """Process natural language user requests, interactive card responses, and approval commands."""
+    trimmed = text.strip()
 
-    # Check for approval commands: "APPROVE <id>"
-    if upper_text.startswith("APPROVE"):
-        parts = text.split()
-        if len(parts) >= 2:
-            approval_id = parts[1].strip()
-            try:
-                result = workflow_service.execute_approved_action(
-                    approval_id=approval_id,
-                    sender_address=sender
-                )
-                cart_items = result.get("cart_state", {}).get("items", [])
-                items_summary = f"{len(cart_items)} item(s) present" if cart_items else "Item verified"
-                reply_text = (
-                    f"✅ **Action Authorized and Verified!**\n\n"
-                    f"• **Target Provider:** `{result['provider_id']}`\n"
-                    f"• **Tool Invoked:** `{result['tool_name']}`\n"
-                    f"• **Postcondition:** {result['verification_details']}\n"
-                    f"• **Verified Cart State:** {items_summary}\n\n"
-                    f"🛡️ *Checkout Boundary Safeguard:* Execution halted prior to checkout or payment."
-                )
-                return make_chat_msg(reply_text, end_session=False)
-            except Exception as e:
-                return make_chat_msg(f"❌ **Approval Execution Blocked:** {str(e)}")
+    # 1. Handle JSON selections from Agentverse Interactive Card clicks
+    card_data = None
+    if trimmed.startswith("{") and trimmed.endswith("}"):
+        try:
+            parsed = json.loads(trimmed)
+            if isinstance(parsed, dict) and "action" in parsed:
+                card_data = parsed
+        except Exception:
+            card_data = None
+
+    if card_data:
+        action = str(card_data.get("action", "")).lower()
+        approval_id = card_data.get("approval_id") or card_data.get("token") or card_data.get("id")
+        if action in ("approve", "confirm") and approval_id:
+            return await _execute_approval(ctx, sender, approval_id)
+        elif action in ("reject", "cancel") and approval_id:
+            return await _cancel_approval(ctx, sender, approval_id)
+        elif action == "select_product":
+            product_id = card_data.get("product_id")
+            provider_id = card_data.get("provider_id")
+            return make_chat_msg(f"Selected product `{product_id}` on `{provider_id}`. Would you like me to compare specs or add it to your cart?")
+
+    # 2. Strict fullmatch for explicit approval/cancel text commands: APPROVE / REJECT / CANCEL <id>
+    cmd_match = re.fullmatch(r"\s*(approve|reject|cancel)\s+(appr_[0-9a-f]+)\s*[.!]?\s*", text, re.I)
+    if cmd_match:
+        verb = cmd_match.group(1).lower()
+        approval_id = cmd_match.group(2)
+        if verb == "approve":
+            return await _execute_approval(ctx, sender, approval_id)
         else:
-            return make_chat_msg("⚠️ Please specify the approval token to authorize, e.g., `APPROVE appr_xxxx`.")
+            return await _cancel_approval(ctx, sender, approval_id)
 
-    # Check for rejection commands: "REJECT <id>" or "CANCEL <id>"
-    elif upper_text.startswith("REJECT") or upper_text.startswith("CANCEL"):
-        parts = text.split()
-        if len(parts) >= 2:
-            approval_id = parts[1].strip()
-            try:
-                res = workflow_service.cancel_approval(approval_id=approval_id, sender_address=sender)
-                return make_chat_msg(f"🚫 **Action Cancelled:** {res['message']}")
-            except Exception as e:
-                return make_chat_msg(f"⚠️ Could not cancel approval: {str(e)}")
-        else:
-            return make_chat_msg("⚠️ Please specify the approval token to reject, e.g., `REJECT appr_xxxx`.")
+    # 3. Regex search for conversational prose containing approval token (e.g., "Please approve appr_1234")
+    token_match = re.search(r"\b(appr_[0-9a-f]+)\b", text, re.I)
+    if token_match:
+        approval_id = token_match.group(1)
+        if re.search(r"\b(approve|yes|confirm|proceed|accept|go\s+ahead)\b", text, re.I):
+            return await _execute_approval(ctx, sender, approval_id)
+        elif re.search(r"\b(reject|no|cancel|deny|stop|abort)\b", text, re.I):
+            return await _cancel_approval(ctx, sender, approval_id)
 
-    # General Shopping Goal Request
-    # Execute unified workflow service
+    # 4. General Shopping Goal Request
     task_res = workflow_service.run_search_and_compare(
         prompt=text,
         session_id=f"asi1_{sender[-8:] if len(sender) >= 8 else sender}",
@@ -206,8 +255,9 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
     for c in candidates[:3]:
         specs = c.get("specs", {})
         spec_summary = f"{specs.get('cpu', 'N/A')} • {specs.get('ram', 'N/A')} • {specs.get('battery', 'N/A')}"
-        is_top = "⭐ " if (top and c.get("sku") == top.get("sku")) else ""
-        table_lines.append(f"| {is_top}**{c.get('title')}** | `{c.get('provider_id')}` | {spec_summary} | ₹{Number(c.get('price', 0)):,.0f} |")
+        is_top = "⭐ " if (top and (c.get("sku") == top.get("sku") or c.get("product_id") == top.get("product_id"))) else ""
+        c_title = c.get("title") or c.get("name", "Product")
+        table_lines.append(f"| {is_top}**{c_title}** | `{c.get('provider_id')}` | {spec_summary} | ₹{Number(c.get('price', 0)):,.0f} |")
 
     table_text = "\n".join(table_lines)
 
@@ -217,11 +267,12 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
         f"💡 **Trade-off Analysis:**\n{rationale}\n\n"
     )
 
-    if approval:
+    if approval and top:
+        top_title = top.get("title") or top.get("name", "Item")
         response_text += (
             f"---\n"
             f"🛡️ **Action Authorization Required:**\n"
-            f"I propose to add **{top.get('title')}** to your cart on **`{approval['provider_id']}`** "
+            f"I propose to add **{top_title}** to your cart on **`{approval['provider_id']}`** "
             f"at **₹{approval['bound_price']:,.2f}**.\n\n"
             f"👉 To proceed, reply:\n"
             f"**`APPROVE {approval['approval_id']}`**\n\n"
@@ -230,14 +281,12 @@ async def process_user_text(ctx: Context, sender: str, text: str) -> ChatMessage
             f"*(Token valid for 5 minutes • Will strictly NOT check out)*"
         )
 
-    # Attach interactive card metadata for ASI:One
+    # Attach interactive card metadata for ASI:One / Agentverse
     card_metadata: Optional[MetadataContent] = None
     if approval and top:
-        review_card = build_approval_review_card(approval, top)
-        card_metadata = create_card_metadata(review_card)
+        card_metadata = create_review_metadata(approval, top)
     elif candidates:
-        carousel_card = build_product_carousel_card(candidates, top)
-        card_metadata = create_card_metadata(carousel_card)
+        card_metadata = create_carousel_metadata(candidates, top)
 
     return make_chat_msg(response_text, end_session=False, metadata_card=card_metadata)
 
@@ -253,8 +302,11 @@ def Number(val):
 agent.include(chat_proto, publish_manifest=True)
 
 if __name__ == "__main__":
+    if not validate_agent_config():
+        sys.exit(1)
     print("=================================================================")
     print(f"  Starting Fetch.ai uAgent: {agent.name}")
     print(f"  Agent Address: {agent.address}")
+    print("  Agent Inspector: Open Agent Inspector on Agentverse to monitor live RPCs")
     print("=================================================================")
     agent.run()

@@ -1,5 +1,6 @@
 """Unified Workflow Service: Single source of truth for shopping execution and policy gates."""
 import logging
+import os
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -190,29 +191,58 @@ class WorkflowService:
         if record["status"] != "PENDING":
             raise ValueError(f"Approval token '{approval_id}' is in status '{record['status']}'.")
 
-        # 4. Live Authoritative Price Re-Check (zero tolerance price drift)
+        # 4. Live Authoritative Price Re-Check (fail closed)
         pid = record["arguments"].get("product_id")
         provider_id = record["provider_id"]
+        task_id = record["task_id"]
+
         detail_res, _ = tool_router.route_and_execute(
             canonical_capability=CanonicalCapability.PRODUCT_DETAILS,
             canonical_args={"product_id": pid},
             preferred_provider_id=provider_id,
-            task_id=record["task_id"]
+            task_id=task_id
         )
 
-        current_price = record["bound_price"]
-        if detail_res.status == "SUCCESS":
-            raw_p = detail_res.payload.get("product") or detail_res.payload.get("item") or {}
-            live_price = float(raw_p.get("price") or raw_p.get("cost") or current_price)
-            if abs(live_price - record["bound_price"]) > 0.01:
-                record["status"] = "INVALIDATED"
-                raise ValueError(
-                    f"Price changed from ₹{record['bound_price']:,.2f} to ₹{live_price:,.2f}. "
-                    "Previous approval is invalidated. A new approval is required."
-                )
+        if detail_res.status != "SUCCESS":
+            # Fail closed: live price cannot be retrieved
+            raise ValueError(
+                f"PRICE_UNVERIFIABLE: Authoritative live product details could not be retrieved from provider '{provider_id}' "
+                f"(status: {detail_res.status}). Action aborted; token remains PENDING for retry."
+            )
+
+        raw_p = detail_res.payload.get("product") or detail_res.payload.get("item") or {}
+        if "price" not in raw_p and "cost" not in raw_p:
+            # Fail closed: missing price field
+            raise ValueError(
+                f"PRICE_UNVERIFIABLE: Live product details from provider '{provider_id}' missing price information. "
+                "Action aborted; token remains PENDING for retry."
+            )
+
+        try:
+            live_price = float(raw_p.get("price") if "price" in raw_p else raw_p["cost"])
+        except (ValueError, TypeError):
+            raise ValueError(
+                f"PRICE_UNVERIFIABLE: Invalid price format returned by provider '{provider_id}'. "
+                "Action aborted; token remains PENDING for retry."
+            )
+
+        # Wire in PRICE_DRIFT_TOLERANCE_PERCENT (default 0.0%)
+        tolerance_pct = float(os.getenv("PRICE_DRIFT_TOLERANCE_PERCENT", "0.0"))
+        max_allowed_delta = (record["bound_price"] * (tolerance_pct / 100.0)) + 0.01
+
+        if abs(live_price - record["bound_price"]) > max_allowed_delta:
+            record["status"] = "INVALIDATED"
+            audit_agent.record_event(task_id, "PRICE_DRIFT_INVALIDATED", "policy_agent", "INVALIDATED", {
+                "bound_price": record["bound_price"],
+                "live_price": live_price,
+                "tolerance_pct": tolerance_pct
+            })
+            raise ValueError(
+                f"Price changed from ₹{record['bound_price']:,.2f} to ₹{live_price:,.2f}. "
+                "Previous approval is invalidated. A new approval is required."
+            )
 
         # 5. Execute Action on Target Provider
-        task_id = record["task_id"]
         exec_msg = ActionExecutionMessage(
             task_id=task_id,
             approval_id=approval_id,
@@ -224,15 +254,29 @@ class WorkflowService:
         try:
             ver_res = cart_agent.execute_and_verify_cart_action(exec_msg)
         except Exception as e:
-            # Mark FAILED, do NOT consume token, allow safe retry
-            record["status"] = "FAILED"
-            audit_agent.record_event(task_id, "ACTION_FAILED", "cart_agent", "FAILED", {"error": str(e)})
+            attempts = record.get("attempts", 0) + 1
+            record["attempts"] = attempts
+            if attempts >= 2:
+                record["status"] = "FAILED"
+            audit_agent.record_event(task_id, "ACTION_FAILED", "cart_agent", "FAILED", {"error": str(e), "attempts": attempts})
             raise RuntimeError(f"Cart action execution failed on provider: {str(e)}")
 
-        # 6. Consume Token only after verified success
+        # 6. Verify Postcondition (fail closed if item is not verified)
+        if not ver_res.verified_postcondition:
+            record["status"] = "FAILED_VERIFICATION"
+            audit_agent.record_event(task_id, "ACTION_VERIFICATION_FAILED", "cart_agent", "FAILED_VERIFICATION", {
+                "approval_id": approval_id,
+                "verification_details": ver_res.verification_details
+            })
+            raise RuntimeError(
+                f"Cart addition could not be verified: {ver_res.verification_details} "
+                "Cart state is unknown. No checkout occurred."
+            )
+
+        # 7. Consume Token ONLY after verified success
         record["status"] = "CONSUMED"
         audit_agent.record_event(task_id, "APPROVAL_CONSUMED", "policy_agent", "CONSUMED", {"approval_id": approval_id})
-        audit_agent.record_event(task_id, "ACTION_VERIFIED", "cart_agent", ver_res.status, {"verified_postcondition": ver_res.verified_postcondition})
+        audit_agent.record_event(task_id, "ACTION_VERIFIED", "cart_agent", ver_res.status, {"verified_postcondition": True})
 
         cart_state = ver_res.cart_state
         result = {
@@ -240,7 +284,7 @@ class WorkflowService:
             "action_id": ver_res.action_id,
             "provider_id": provider_id,
             "tool_name": record["target_tool"],
-            "verified_postcondition": ver_res.verified_postcondition,
+            "verified_postcondition": True,
             "verification_details": ver_res.verification_details,
             "cart_state": cart_state,
             "checkout_boundary_preserved": True
