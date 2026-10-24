@@ -112,6 +112,23 @@ _carts: Dict[str, Dict[str, Any]] = {}
 # =====================================================================
 # Interactive Card Builders (conforming to Agentverse Predefined Schemas)
 # =====================================================================
+def create_card_metadata(card_payload: Dict[str, Any], card_kind: str) -> MetadataContent:
+    serialized = json.dumps(card_payload)
+    if len(serialized.encode("utf-8")) > 60 * 1024 and "items" in card_payload:
+        card_payload["items"] = card_payload["items"][:2]
+        serialized = json.dumps(card_payload)
+
+    return MetadataContent(
+        type="metadata",
+        metadata={
+            "card_protocol_version": "1",
+            "requires_card_interaction": "true",
+            "card_kind": card_kind,
+            "card_payload": serialized
+        }
+    )
+
+
 def create_carousel_metadata(candidates: List[Dict[str, Any]], top_recommendation: Optional[Dict[str, Any]] = None) -> MetadataContent:
     top_id = (top_recommendation.get("product_id") or top_recommendation.get("sku")) if top_recommendation else None
     items = []
@@ -146,14 +163,7 @@ def create_carousel_metadata(candidates: List[Dict[str, Any]], top_recommendatio
         })
 
     payload = {"card_kind": "carousel", "items": items}
-    return MetadataContent(
-        type="metadata",
-        metadata={
-            "card_name": "Product Recommendations",
-            "card_description": "Ranked multi-provider options with normalized specifications",
-            "card_payload": json.dumps(payload),
-        }
-    )
+    return create_card_metadata(payload, "carousel")
 
 
 def create_review_metadata(approval_req: Dict[str, Any], top_recommendation: Dict[str, Any]) -> MetadataContent:
@@ -179,14 +189,7 @@ def create_review_metadata(approval_req: Dict[str, Any], top_recommendation: Dic
             "selection": {"action": "reject_action", "approval_id": approval_req.get("approval_id", "")}
         }
     }
-    return MetadataContent(
-        type="metadata",
-        metadata={
-            "card_name": "Cart Approval Gate",
-            "card_description": "Review and authorize state-changing cart mutation",
-            "card_payload": json.dumps(payload),
-        }
-    )
+    return create_card_metadata(payload, "review")
 
 
 # =====================================================================
@@ -298,16 +301,7 @@ def make_chat_msg(text: str, end_session: bool = False, metadata_card: Optional[
 
 @chat_proto.on_message(ChatMessage)
 async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
-    # Acknowledge receipt
-    await ctx.send(
-        sender,
-        ChatAcknowledgement(
-            timestamp=datetime.now(timezone.utc),
-            acknowledged_msg_id=msg.msg_id
-        )
-    )
-
-    # Deduplicate
+    # Deduplicate incoming envelopes
     msg_key = str(msg.msg_id)
     if msg_key in _seen_msgs:
         return
@@ -326,7 +320,10 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
             "• *Find a programming laptop under ₹70,000 and compare options.*\n"
             "• *Find 4K monitors under ₹60,000 for design work.*"
         )
-        await ctx.send(sender, make_chat_msg(greeting))
+        try:
+            await ctx.send(sender, make_chat_msg(greeting))
+        except Exception as e:
+            ctx.logger.error(f"Failed to dispatch greeting to {sender}: {e}")
         return
 
     # Extract text or card selections
