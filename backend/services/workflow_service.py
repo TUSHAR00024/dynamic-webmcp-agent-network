@@ -187,11 +187,24 @@ class WorkflowService:
             raise ValueError(f"Approval token '{approval_id}' has already been consumed.")
         if record["status"] == "EXPIRED" or time.time() > record["expires_at"]:
             record["status"] = "EXPIRED"
-            raise ValueError(f"Approval token '{approval_id}' has expired. Action safely aborted.")
+            raise ValueError(f"Approval token '{approval_id}' has expired. Please ask me to search again.")
         if record["status"] != "PENDING":
-            raise ValueError(f"Approval token '{approval_id}' is in status '{record['status']}'.")
+            raise ValueError(f"Approval token '{approval_id}' is in status '{record['status']}'. Please ask me to search again.")
 
-        # 4. Live Authoritative Price Re-Check (fail closed)
+        # 4. Verify HMAC / Argument Hash integrity
+        import hmac
+        expected_hash = policy_agent.compute_hmac(
+            task_id=record["task_id"],
+            provider_id=record["provider_id"],
+            target_tool=record["target_tool"],
+            arguments=record["arguments"],
+            bound_price=record["bound_price"]
+        )
+        if not hmac.compare_digest(record.get("arguments_hash", ""), expected_hash):
+            record["status"] = "TAMPERED"
+            raise ValueError(f"Approval token '{approval_id}' signature verification failed: arguments or price were modified.")
+
+        # 5. Live Authoritative Price Re-Check (fail closed)
         pid = record["arguments"].get("product_id")
         provider_id = record["provider_id"]
         task_id = record["task_id"]
@@ -258,8 +271,10 @@ class WorkflowService:
             record["attempts"] = attempts
             if attempts >= 2:
                 record["status"] = "FAILED"
+            else:
+                record["status"] = "PENDING"  # Safe retry permitted
             audit_agent.record_event(task_id, "ACTION_FAILED", "cart_agent", "FAILED", {"error": str(e), "attempts": attempts})
-            raise RuntimeError(f"Cart action execution failed on provider: {str(e)}")
+            raise RuntimeError(f"Cart action execution failed on provider (attempt {attempts}/2): {str(e)}")
 
         # 6. Verify Postcondition (fail closed if item is not verified)
         if not ver_res.verified_postcondition:
@@ -299,6 +314,16 @@ class WorkflowService:
         record = policy_agent._tokens.get(approval_id)
         if not record:
             raise ValueError(f"Approval token '{approval_id}' not found.")
+
+        # Sender binding check
+        if sender_address and record.get("sender_address") and record["sender_address"] != "web_user":
+            if record["sender_address"] != sender_address:
+                raise PermissionError("Approval token belongs to a different user session.")
+
+        # Only PENDING tokens can be cancelled
+        if record["status"] != "PENDING":
+            raise ValueError(f"Cannot cancel approval token '{approval_id}': token is already in status '{record['status']}'.")
+
         record["status"] = "REJECTED"
         audit_agent.record_event(record["task_id"], "APPROVAL_REJECTED", "policy_agent", "REJECTED", {"approval_id": approval_id})
         return {"status": "REJECTED", "approval_id": approval_id, "message": "Action rejected. Cart remains untouched."}
