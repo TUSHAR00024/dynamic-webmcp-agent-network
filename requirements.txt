@@ -1,8 +1,7 @@
-# Core Python Requirements for Dynamic WebMCP Agent Network
-# Runs natively on Python 3.11 with standard library
-# Optional Fetch.ai and ACP extensions:
-uagents>=0.17.0
-uagents-core>=0.3.0
+# Core Dependencies for Dynamic WebMCP Agent Network (Fetch-A-Thon 3.0)
+uagents>=0.23.6
+uagents-core>=0.4.0
+openai>=1.0.0
 pydantic>=2.0.0
 python-dotenv>=1.0.0
 requests>=2.31.0

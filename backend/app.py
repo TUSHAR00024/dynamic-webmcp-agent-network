@@ -6,7 +6,7 @@ import os
 import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 # Set up project path
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -16,6 +16,7 @@ from backend.api.approvals import ApprovalsAPI
 from backend.api.bridge import BridgeAPI
 from backend.api.health import HealthAPI
 from backend.api.tasks import TaskWorkflowAPI
+from backend.bridge.bridge_security import BridgeSecurityManager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,12 +25,18 @@ logging.basicConfig(
 logger = logging.getLogger("WebMCP.Server")
 
 STATIC_DIR = BASE_DIR / "apps" / "demo-store"
+MAX_BODY_SIZE = 1024 * 1024  # 1 MB
 
 
 class WebMCPServerHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
-        # Enable CORS for WebMCP browser integrations
-        self.send_header("Access-Control-Allow-Origin", "*")
+        # Validate origin for CORS
+        incoming_origin = self.headers.get("Origin", "")
+        if BridgeSecurityManager.validate_origin(incoming_origin):
+            self.send_header("Access-Control-Allow-Origin", incoming_origin or "*")
+        else:
+            self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:8000")
+
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-WebMCP-Session")
         super().end_headers()
@@ -58,7 +65,14 @@ class WebMCPServerHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        body = self._read_json_body()
+
+        # Enforce max body size
+        content_len = int(self.headers.get("Content-Length", 0))
+        if content_len > MAX_BODY_SIZE:
+            self._send_json({"status": "FAILED", "error": "Request payload exceeds 1MB limit."}, status=413)
+            return
+
+        body = self._read_json_body(content_len)
 
         try:
             if path == "/api/bridge/register":
@@ -73,16 +87,17 @@ class WebMCPServerHandler(SimpleHTTPRequestHandler):
             elif path == "/api/approvals/execute":
                 res = ApprovalsAPI.handle_execute_approval(body)
                 self._send_json(res)
+            elif path == "/api/approvals/reject":
+                res = ApprovalsAPI.handle_reject_approval(body)
+                self._send_json(res)
             else:
-                self.send_response(404)
-                self._send_json({"error": "Endpoint not found"})
+                self._send_json({"error": "Endpoint not found"}, status=404)
         except Exception as e:
             logger.error(f"Error handling POST {path}: {e}", exc_info=True)
-            self.send_response(400)
-            self._send_json({"status": "FAILED", "error": str(e)})
+            # Send single status line cleanly without double send_response
+            self._send_json({"status": "FAILED", "error": str(e)}, status=400)
 
-    def _read_json_body(self) -> dict:
-        content_len = int(self.headers.get("Content-Length", 0))
+    def _read_json_body(self, content_len: int) -> dict:
         if content_len > 0:
             raw = self.rfile.read(content_len).decode("utf-8")
             try:
@@ -103,7 +118,6 @@ class WebMCPServerHandler(SimpleHTTPRequestHandler):
         if path == "/" or path == "":
             path = "/index.html"
 
-        # Sanitize path
         file_path = STATIC_DIR / path.lstrip("/")
         if file_path.is_file():
             mime_type, _ = mimetypes.guess_type(str(file_path))
@@ -114,8 +128,7 @@ class WebMCPServerHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(content)
         else:
-            self.send_response(404)
-            self._send_json({"error": f"File '{path}' not found"})
+            self._send_json({"error": f"File '{path}' not found"}, status=404)
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8000):
